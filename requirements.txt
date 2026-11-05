@@ -1,0 +1,6 @@
+anthropic==0.109.1
+python-dotenv
+langgraph
+chromadb
+streamlit
+pypdf
