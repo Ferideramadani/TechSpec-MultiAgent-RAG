@@ -79,6 +79,8 @@ class TechSpecState(TypedDict):
 
     # 1. Document Parser & Tech Spec Ingestion Agent
     document_chunks: list[DocumentChunk]
+    page_count: int  # Vetëm faqet me tekst; faqet bosh ose të palexueshme nuk numërohen.
+    chunk_count: int
 
     # 2. Retrieval & Code Context Agent
     retrieved_chunks: list[RetrievedChunk]
@@ -109,6 +111,8 @@ def create_initial_state(document_path: str, query: str) -> TechSpecState:
         "document_path": document_path,
         "query": query,
         "document_chunks": [],
+        "page_count": 0,
+        "chunk_count": 0,
         "retrieved_chunks": [],
         "api_endpoints": [],
         "functional_requirements": [],
