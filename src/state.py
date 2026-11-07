@@ -11,6 +11,7 @@ from typing import Annotated, Literal, TypedDict
 Priority = Literal["low", "medium", "high"]
 RequirementKind = Literal["functional", "non_functional"]
 QualityCriterion = Literal["clarity", "ambiguity", "testability", "measurability", "completeness"]
+TestType = Literal["positive", "negative", "boundary"]
 VerificationStatus = Literal["supported", "partially_supported", "unsupported"]
 
 
@@ -61,15 +62,19 @@ class RequirementReview(TypedDict):
 class TestCase(TypedDict):
     test_id: str
     title: str
+    test_type: TestType
+    preconditions: list[str]
     steps: list[str]
     expected_result: str
     requirement_ids: list[str]
 
 
 class VerificationResult(TypedDict):
-    claim: str
+    item_id: str  # REQ-001, REQ-001:improved ose TC-001.
+    claim: str  # Teksti i verifikuar, marrë nga gjendja dhe jo nga modeli.
     status: VerificationStatus
     explanation: str
+    unsupported_claims: list[str]
     source_chunk_ids: list[str]
 
 
@@ -102,12 +107,11 @@ class TechSpecState(TypedDict):
 
     # 5. Test Case & Documentation Generator Agent
     test_cases: list[TestCase]
-    generated_documentation: str
+    generated_documentation: str  # Markdown, i ndërtuar nga kodi pa thirrje te Gemini.
 
     # 6. Citation & Fact-Verifier Agent
     verification_results: list[VerificationResult]
-    verification_passed: bool
-    revision_count: int
+    verification_passed: bool  # True kur çdo element u verifikua dhe asnjë nuk është "unsupported".
 
     # Reducer-i `operator.add` shton gabimet e reja te lista, pa i mbishkruar të vjetrat.
     errors: Annotated[list[AgentError], operator.add]
@@ -131,6 +135,5 @@ def create_initial_state(document_path: str, query: str) -> TechSpecState:
         "generated_documentation": "",
         "verification_results": [],
         "verification_passed": False,
-        "revision_count": 0,
         "errors": [],
     }
