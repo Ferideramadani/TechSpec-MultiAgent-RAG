@@ -1,7 +1,7 @@
 """Retrieval & Code Context Agent.
 
 Gjen në bazën vektoriale pjesët e dokumentit që lidhen më shumë me pyetjen. Ky
-agjent nuk thërret Claude, ndaj nuk ka kosto API.
+agjent nuk thërret modelin gjuhësor (Gemini).
 """
 
 import logging

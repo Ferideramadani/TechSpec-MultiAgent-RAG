@@ -1,4 +1,4 @@
-anthropic==0.109.1
+langchain-google-genai==4.4.3
 python-dotenv
 langgraph
 chromadb

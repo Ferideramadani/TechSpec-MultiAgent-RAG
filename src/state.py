@@ -8,8 +8,9 @@ ta gjurmojë deri te pjesa origjinale e dokumentit.
 import operator
 from typing import Annotated, Literal, TypedDict
 
-Severity = Literal["low", "medium", "high", "critical"]
 Priority = Literal["low", "medium", "high"]
+RequirementKind = Literal["functional", "non_functional"]
+QualityCriterion = Literal["clarity", "ambiguity", "testability", "measurability", "completeness"]
 VerificationStatus = Literal["supported", "partially_supported", "unsupported"]
 
 
@@ -37,19 +38,24 @@ class ApiEndpoint(TypedDict):
     source_chunk_ids: list[str]
 
 
-class FunctionalRequirement(TypedDict):
+class Requirement(TypedDict):
     requirement_id: str
+    kind: RequirementKind
     description: str
     priority: Priority
     source_chunk_ids: list[str]
 
 
-class ArchitectureFinding(TypedDict):
-    title: str
-    severity: Severity
-    description: str
-    recommendation: str
-    source_chunk_ids: list[str]
+class QualityIssue(TypedDict):
+    criterion: QualityCriterion
+    problem: str
+
+
+class RequirementReview(TypedDict):
+    requirement_id: str
+    score: int  # 0 deri në 100: pjesa e kritereve të cilësisë që plotëson kërkesa.
+    issues: list[QualityIssue]
+    improved_version: str
 
 
 class TestCase(TypedDict):
@@ -87,10 +93,12 @@ class TechSpecState(TypedDict):
 
     # 3. API & Functional Requirement Extractor Agent
     api_endpoints: list[ApiEndpoint]
-    functional_requirements: list[FunctionalRequirement]
+    requirements: list[Requirement]
 
-    # 4. Architecture Critic & Anti-Pattern Analyzer
-    architecture_findings: list[ArchitectureFinding]
+    # 4. Requirement Quality Critic
+    requirement_reviews: list[RequirementReview]
+    quality_score: int | None  # Mesatarja e vlerësimeve; None kur nuk ka kërkesa të vlerësuara.
+    quality_summary: str
 
     # 5. Test Case & Documentation Generator Agent
     test_cases: list[TestCase]
@@ -115,8 +123,10 @@ def create_initial_state(document_path: str, query: str) -> TechSpecState:
         "chunk_count": 0,
         "retrieved_chunks": [],
         "api_endpoints": [],
-        "functional_requirements": [],
-        "architecture_findings": [],
+        "requirements": [],
+        "requirement_reviews": [],
+        "quality_score": None,
+        "quality_summary": "",
         "test_cases": [],
         "generated_documentation": "",
         "verification_results": [],
