@@ -1,0 +1,256 @@
+{
+  "document": "shopflow_srs.pdf",
+  "description": "Lista e saktë e kërkesave dhe pikave API në dokumentin fiktiv, për vlerësimin e sistemit.",
+  "requirements": [
+    {
+      "id": "FR-01",
+      "kind": "functional",
+      "title": "Customer registration",
+      "statement": "The system shall allow a customer to register with an email address and a password of at least 12 characters. The email address shall be unique across all accounts.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "FR-02",
+      "kind": "functional",
+      "title": "Login",
+      "statement": "The system shall authenticate customers with email and password and return a JWT access token valid for 15 minutes and a refresh token valid for 7 days.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "FR-03",
+      "kind": "functional",
+      "title": "Account lockout",
+      "statement": "After 5 consecutive failed login attempts, the system shall lock the account for 15 minutes and notify the customer by email.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "FR-04",
+      "kind": "functional",
+      "title": "Product search",
+      "statement": "The system shall allow customers to search products by keyword and filter them by category. Results shall be paginated with 20 items per page by default and at most 100 items per page.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "FR-05",
+      "kind": "functional",
+      "title": "Shopping cart",
+      "statement": "The system shall allow a customer to add a product to the cart with a quantity between 1 and 20 units. Adding a quantity above the available stock shall be rejected with HTTP 409.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "FR-06",
+      "kind": "functional",
+      "title": "Stock reservation",
+      "statement": "When an order is created, the system shall reserve the ordered stock for 15 minutes until the payment is confirmed. Reservations that are not paid within 15 minutes shall be released automatically.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "FR-07",
+      "kind": "functional",
+      "title": "Order creation",
+      "statement": "The system shall create an order from the contents of the cart and return the order with the status PENDING_PAYMENT.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "FR-08",
+      "kind": "functional",
+      "title": "Payment confirmation",
+      "statement": "When the payment provider sends a payment_succeeded webhook, the system shall change the order status to PAID and send a confirmation email to the customer within 60 seconds.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "FR-09",
+      "kind": "functional",
+      "title": "Order cancellation",
+      "statement": "A customer shall be able to cancel an order only while its status is PENDING_PAYMENT or PAID. Cancelling a PAID order shall trigger a full refund through the payment provider.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "FR-10",
+      "kind": "functional",
+      "title": "Order history",
+      "statement": "The system shall show a customer all of their orders, sorted from newest to oldest.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "FR-11",
+      "kind": "functional",
+      "title": "Sales report",
+      "statement": "Administrators shall be able to export a sales report for a selected date range as a CSV file.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "FR-12",
+      "kind": "functional",
+      "title": "Admin usability",
+      "statement": "The admin panel should be user-friendly and easy to use.",
+      "deliberately_vague": true
+    },
+    {
+      "id": "FR-13",
+      "kind": "functional",
+      "title": "Product page speed",
+      "statement": "Product pages should load fast.",
+      "deliberately_vague": true
+    },
+    {
+      "id": "NFR-01",
+      "kind": "non_functional",
+      "title": "Performance",
+      "statement": "95% of API requests shall complete within 300 ms under a load of 500 requests per second.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "NFR-02",
+      "kind": "non_functional",
+      "title": "Availability",
+      "statement": "The service shall be available 99.9% of the time per calendar month, excluding planned maintenance announced at least 48 hours in advance.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "NFR-03",
+      "kind": "non_functional",
+      "title": "Transport and password security",
+      "statement": "All traffic shall use TLS 1.2 or higher. Passwords shall be stored only as bcrypt hashes with a cost factor of 12.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "NFR-04",
+      "kind": "non_functional",
+      "title": "Rate limiting",
+      "statement": "Each authenticated client shall be limited to 100 requests per minute. Requests above the limit shall receive HTTP 429 with a Retry-After header.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "NFR-05",
+      "kind": "non_functional",
+      "title": "Backup and recovery",
+      "statement": "The database shall be backed up every 15 minutes (RPO of 15 minutes), and the service shall be restored within 1 hour after a failure (RTO of 1 hour).",
+      "deliberately_vague": false
+    },
+    {
+      "id": "NFR-06",
+      "kind": "non_functional",
+      "title": "Data privacy",
+      "statement": "Personal data of a customer shall be deleted within 30 days after the customer requests deletion of the account, in line with the GDPR.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "NFR-07",
+      "kind": "non_functional",
+      "title": "Accessibility",
+      "statement": "The customer storefront shall conform to WCAG 2.1 level AA.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "NFR-08",
+      "kind": "non_functional",
+      "title": "Logging",
+      "statement": "Every API request shall be logged with a unique request ID. Logs shall be kept for 90 days and shall never contain passwords or payment card numbers.",
+      "deliberately_vague": false
+    },
+    {
+      "id": "NFR-09",
+      "kind": "non_functional",
+      "title": "Scalability",
+      "statement": "The system should scale to handle a large number of users.",
+      "deliberately_vague": true
+    }
+  ],
+  "api_endpoints": [
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/register",
+      "parameters": [
+        "email",
+        "password"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "parameters": [
+        "email",
+        "password"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/refresh",
+      "parameters": [
+        "refresh_token"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/products",
+      "parameters": [
+        "q",
+        "category",
+        "page",
+        "size"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/products/{product_id}",
+      "parameters": [
+        "product_id"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cart/items",
+      "parameters": [
+        "product_id",
+        "quantity"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/cart/items/{item_id}",
+      "parameters": [
+        "item_id"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/orders",
+      "parameters": [
+        "shipping_address_id",
+        "payment_method"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/orders/{order_id}",
+      "parameters": [
+        "order_id"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/orders/{order_id}/cancel",
+      "parameters": [
+        "order_id"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/payments/webhook",
+      "parameters": [
+        "event_type",
+        "order_id",
+        "signature"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/reports/sales",
+      "parameters": [
+        "from",
+        "to"
+      ]
+    }
+  ]
+}
