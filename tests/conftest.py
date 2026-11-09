@@ -1,32 +1,35 @@
 from dataclasses import replace
 
 import pytest
-from fake_gemini import FakeGemini, answer
-from langchain_google_genai import ChatGoogleGenerativeAI
+from fake_llm import FakeLLM, answer
+from langchain_anthropic import ChatAnthropic
 
 from src import config
 from src.utils import llm
 
 
 @pytest.fixture(scope="session")
-def gemini_server():
-    server = FakeGemini()
+def llm_server():
+    server = FakeLLM()
     yield server
     server.server.shutdown()
 
 
 @pytest.fixture
-def gemini(gemini_server, monkeypatch):
-    """Çdo thirrje te Gemini shkon te serveri lokal, me një çelës provë."""
-    gemini_server.requests.clear()
-    gemini_server.respond = lambda: answer({})
-    model = ChatGoogleGenerativeAI(
+def llm_api(llm_server, monkeypatch):
+    """Çdo thirrje te Claude shkon te serveri lokal, me një çelës provë."""
+    llm_server.requests.clear()
+    llm_server.respond = lambda: answer({})
+    model = ChatAnthropic(
         model=config.settings.model,
-        google_api_key="test-key",
-        base_url=gemini_server.url,
+        api_key="test-key",
+        base_url=llm_server.url,
+        max_tokens=config.settings.max_tokens,
         max_retries=0,
         timeout=10,
+        betas=[config.FALLBACK_BETA],
+        model_kwargs={"fallbacks": "default"},
     )
     monkeypatch.setattr(llm, "get_llm", lambda: model)
-    monkeypatch.setattr(llm, "settings", replace(config.settings, gemini_api_key="test-key"))
-    return gemini_server
+    monkeypatch.setattr(llm, "settings", replace(config.settings, anthropic_api_key="test-key"))
+    return llm_server

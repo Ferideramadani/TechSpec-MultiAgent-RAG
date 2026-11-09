@@ -16,6 +16,8 @@ import streamlit as st
 from src.config import PROJECT_ROOT
 from src.graph import PIPELINE, build_graph
 from src.state import RetrievedChunk, TechSpecState, create_initial_state
+from src.utils.analysis_io import AnalysisFileError, analysis_from_json, analysis_to_json
+from src.utils.sources import describe_sources
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +140,22 @@ def render_sidebar() -> None:
             else:
                 with document_path(selected_path, uploaded_file) as path:
                     run_analysis(path, question.strip())
-        st.caption("Analiza zgjat rreth 1 deri në 2 minuta, sepse 4 agjentë thërrasin Gemini.")
+        st.caption("Analiza zgjat rreth 1 deri në 2 minuta, sepse 4 agjentë thërrasin modelin gjuhësor (Claude).")
+
+        st.divider()
+        st.subheader("Analizë e ruajtur")
+        saved_file = st.file_uploader(
+            "Hap një analizë të ruajtur (.json)",
+            type="json",
+            key="saved_analysis",
+            help="Shfaq rezultatet e një analize të mëparshme pa thirrur modelin gjuhësor.",
+        )
+        # Hapet vetëm me klikim, që skedari i mbetur të mos mbishkruajë një analizë të re.
+        if st.button("Hap", width="stretch", key="open_saved", disabled=saved_file is None):
+            try:
+                st.session_state.analysis = analysis_from_json(saved_file.getvalue())
+            except AnalysisFileError as exc:
+                st.error(str(exc))
 
 
 def render_errors(state: TechSpecState, document: str) -> None:
@@ -174,7 +191,6 @@ def render_requirements(state: TechSpecState, completed: list[str]) -> None:
     if not state["requirements"]:
         st.info("Nuk u gjet asnjë kërkesë në pjesët e dokumentit që lidhen me pyetjen.")
     else:
-        pages = {chunk["chunk_id"]: chunk["page"] for chunk in state["retrieved_chunks"]}
         st.dataframe(
             [
                 {
@@ -182,7 +198,7 @@ def render_requirements(state: TechSpecState, completed: list[str]) -> None:
                     "Lloji": KIND_LABELS[req["kind"]],
                     "Prioriteti": req["priority"],
                     "Kërkesa": req["description"],
-                    "Faqet": ", ".join(str(p) for p in sorted({pages.get(c) for c in req["source_chunk_ids"]} - {None})),
+                    "Burimi (faqja, seksioni)": describe_sources(req["source_chunk_ids"], state["retrieved_chunks"]),
                 }
                 for req in state["requirements"]
             ],
@@ -296,12 +312,15 @@ def render_chunk(rank: int, chunk: RetrievedChunk) -> None:
     similarity = max(0.0, min(1.0, chunk["score"]))
     with st.container(border=True):
         title, score = st.columns([4, 1])
-        title.markdown(f"**#{rank} · Faqja {chunk['page']}**")
+        section = f" · {chunk['section']}" if chunk.get("section") else ""
+        title.markdown(f"**#{rank} · Faqja {chunk['page']}{section}**")
         score.markdown(f"**{similarity:.1%}**")
         st.progress(similarity)
         # st.code e ruan tekstin ashtu siç është, pa e interpretuar si Markdown.
         st.code(chunk["text"], language=None, wrap_lines=True)
-        st.caption(chunk["chunk_id"])
+        # Analizat e ruajtura para kërkimit hibrid nuk e kanë këtë fushë.
+        keywords = " · gjetur edhe me fjalë kyçe" if chunk.get("keyword_score", 0) > 0 else ""
+        st.caption(f"{chunk['chunk_id']}{keywords}")
 
 
 def render_sources(state: TechSpecState, completed: list[str]) -> None:
@@ -320,7 +339,21 @@ def render_main() -> None:
         return
 
     state, completed, document = analysis["state"], analysis["completed"], analysis["document"]
-    st.caption(f"Dokumenti: {document} · Pyetja: {state['query']}")
+    info, save = st.columns([4, 1], vertical_alignment="center")
+    info.caption(f"Dokumenti: {document} · Pyetja: {state['query']}")
+    save.download_button(
+        "Ruaj analizën (.json)",
+        analysis_to_json(analysis),
+        file_name=f"{Path(document).stem}_analiza.json",
+        mime="application/json",
+        width="stretch",
+        key="download_analysis",
+    )
+    if analysis.get("saved_at"):
+        st.info(
+            f"Kjo është një analizë e ruajtur më {analysis['saved_at'].replace('T', ' ')}. "
+            "Rezultatet shfaqen nga skedari, pa thirrur modelin gjuhësor."
+        )
     render_errors(state, document)
     render_metrics(state, completed)
 

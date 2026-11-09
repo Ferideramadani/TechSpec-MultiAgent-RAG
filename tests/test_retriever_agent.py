@@ -47,15 +47,14 @@ def test_pipeline_retrieves_the_relevant_page(tmp_path, store):
     assert best["chunk_id"] in {chunk["chunk_id"] for chunk in result["document_chunks"]}
 
 
-def test_results_are_sorted_and_limited_to_top_k(tmp_path, store):
+def test_results_are_limited_to_top_k_and_matched_by_keywords(tmp_path, store):
     lines = [f"Endpoint number {i} returns the order status." for i in range(60)]
     path = write_pdf(tmp_path / "spec.pdf", [lines, lines, lines])
 
     chunks = run_pipeline(path, "order status")["retrieved_chunks"]
-    scores = [chunk["score"] for chunk in chunks]
 
     assert len(chunks) == DEFAULT_TOP_K
-    assert scores == sorted(scores, reverse=True)
+    assert all(chunk["keyword_score"] > 0 for chunk in chunks)
 
 
 def test_search_is_limited_to_the_current_document(tmp_path, store):

@@ -1,7 +1,7 @@
-"""Testet e integritetit të grafit: PDF reale, bazë vektoriale e përkohshme dhe Gemini i simuluar."""
+"""Testet e integritetit të grafit: PDF reale, bazë vektoriale e përkohshme dhe Claude i simuluar."""
 
 import pytest
-from fake_gemini import answer, api_error
+from fake_llm import answer, api_error
 from test_pdf_loader import write_pdf
 from test_vector_db import HashEmbedding
 
@@ -78,16 +78,15 @@ def pdf(tmp_path):
     return write_pdf(tmp_path / "spec.pdf", [PDF_LINES])
 
 
-def respond_by_schema(gemini, overrides=None):
+def respond_by_schema(llm_api, overrides=None):
     """Çdo agjent merr përgjigjen e vet, sipas skemës JSON që dërgon."""
     overrides = overrides or {}
 
     def respond():
-        schema = gemini.requests[-1]["body"]["generationConfig"]["responseJsonSchema"]
-        key = next(key for key in RESPONSES if key in schema["properties"])
+        key = next(key for key in RESPONSES if key in llm_api.schema_properties)
         return overrides.get(key) or answer(RESPONSES[key])
 
-    gemini.respond = respond
+    llm_api.respond = respond
 
 
 def run(document_path, query="How do clients authenticate?"):
@@ -113,8 +112,8 @@ def test_pipeline_order_matches_the_six_agents():
     assert ("verifier", "__end__") in edges
 
 
-def test_full_pipeline_runs_all_agents(gemini, store, pdf):
-    respond_by_schema(gemini)
+def test_full_pipeline_runs_all_agents(llm_api, store, pdf):
+    respond_by_schema(llm_api)
 
     visited, state = run(pdf)
 
@@ -130,16 +129,16 @@ def test_full_pipeline_runs_all_agents(gemini, store, pdf):
     doc = state["generated_documentation"]
     assert "| REQ-001 | TC-001 |" in doc
     assert "Rezultati: **kaloi**" in doc
-    assert len(gemini.requests) == 4
+    assert len(llm_api.requests) == 4
 
 
-def test_parser_error_stops_before_any_other_agent(gemini, store, tmp_path):
+def test_parser_error_stops_before_any_other_agent(llm_api, store, tmp_path):
     visited, state = run(tmp_path / "missing.pdf")
 
     assert visited == ["parser"]
     assert [error["agent"] for error in state["errors"]] == ["document_parser"]
     assert state["retrieved_chunks"] == []
-    assert gemini.requests == []
+    assert llm_api.requests == []
 
 
 @pytest.mark.parametrize(
@@ -151,20 +150,20 @@ def test_parser_error_stops_before_any_other_agent(gemini, store, tmp_path):
         ("verdicts", "verifier", ORDER, 4),
     ],
 )
-def test_gemini_error_stops_the_pipeline_at_that_agent(
-    gemini, store, pdf, failing_schema, failing_agent, visited_agents, requests
+def test_llm_error_stops_the_pipeline_at_that_agent(
+    llm_api, store, pdf, failing_schema, failing_agent, visited_agents, requests
 ):
-    respond_by_schema(gemini, {failing_schema: api_error(429, "RESOURCE_EXHAUSTED", "Quota exceeded.")})
+    respond_by_schema(llm_api, {failing_schema: api_error(429, "tokens", "Quota exceeded.")})
 
     visited, state = run(pdf)
 
     assert visited == visited_agents
     assert [error["agent"] for error in state["errors"]] == [failing_agent]
-    assert len(gemini.requests) == requests
+    assert len(llm_api.requests) == requests
 
 
-def test_document_without_requirements_still_completes(gemini, store, pdf):
-    respond_by_schema(gemini, {"requirements": answer({"requirements": [], "api_endpoints": []})})
+def test_document_without_requirements_still_completes(llm_api, store, pdf):
+    respond_by_schema(llm_api, {"requirements": answer({"requirements": [], "api_endpoints": []})})
 
     visited, state = run(pdf)
 
@@ -174,11 +173,11 @@ def test_document_without_requirements_still_completes(gemini, store, pdf):
     assert state["test_cases"] == []
     assert state["verification_passed"] is True
     assert "Nuk u gjet asnjë kërkesë" in state["generated_documentation"]
-    assert len(gemini.requests) == 1
+    assert len(llm_api.requests) == 1
 
 
-def test_run_pipeline_returns_the_final_state(gemini, store, pdf):
-    respond_by_schema(gemini)
+def test_run_pipeline_returns_the_final_state(llm_api, store, pdf):
+    respond_by_schema(llm_api)
 
     state = graph_module.run_pipeline(str(pdf), "How do clients authenticate?")
 

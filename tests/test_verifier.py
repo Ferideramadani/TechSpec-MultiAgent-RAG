@@ -1,6 +1,6 @@
 """Testet e agjentit verifikues. Gabimet e API-së testohen te test_llm.py."""
 
-from fake_gemini import answer, api_error
+from fake_llm import answer, api_error
 from langgraph.graph import END, START, StateGraph
 
 from src.agents import verifier
@@ -64,8 +64,8 @@ def make_state(documentation="# Specifikimi\n"):
     return state
 
 
-def test_all_supported_items_pass(gemini):
-    gemini.respond = all_supported
+def test_all_supported_items_pass(llm_api):
+    llm_api.respond = all_supported
 
     result = verifier.verify_outputs(make_state())
 
@@ -85,8 +85,8 @@ def test_all_supported_items_pass(gemini):
     assert test_result["source_chunk_ids"] == ["spec-p3-c00004"]
 
 
-def test_partially_supported_items_still_pass(gemini):
-    gemini.respond = lambda: verdicts(
+def test_partially_supported_items_still_pass(llm_api):
+    llm_api.respond = lambda: verdicts(
         verdict("REQ-001"), verdict("REQ-001:improved"), verdict("REQ-002"),
         verdict("TC-001", "partially_supported", ["error 'No data'"], "The error message is assumed."),
     )
@@ -97,8 +97,8 @@ def test_partially_supported_items_still_pass(gemini):
     assert result["verification_results"][3]["unsupported_claims"] == ["error 'No data'"]
 
 
-def test_an_unsupported_item_fails_verification(gemini):
-    gemini.respond = lambda: verdicts(
+def test_an_unsupported_item_fails_verification(llm_api):
+    llm_api.respond = lambda: verdicts(
         verdict("REQ-001", "unsupported", ["quickly"], "Not in the chunks."),
         verdict("REQ-001:improved"), verdict("REQ-002"), verdict("TC-001"),
     )
@@ -106,8 +106,8 @@ def test_an_unsupported_item_fails_verification(gemini):
     assert verifier.verify_outputs(make_state())["verification_passed"] is False
 
 
-def test_supported_with_listed_assumptions_becomes_partial(gemini):
-    gemini.respond = lambda: verdicts(
+def test_supported_with_listed_assumptions_becomes_partial(llm_api):
+    llm_api.respond = lambda: verdicts(
         verdict("REQ-001"), verdict("REQ-001:improved"), verdict("REQ-002"),
         verdict("TC-001", "supported", ["error 'No data'", "  "]),
     )
@@ -118,8 +118,8 @@ def test_supported_with_listed_assumptions_becomes_partial(gemini):
     assert result["unsupported_claims"] == ["error 'No data'"]
 
 
-def test_missing_verdict_fails_and_unknown_or_duplicate_verdicts_are_ignored(gemini):
-    gemini.respond = lambda: verdicts(
+def test_missing_verdict_fails_and_unknown_or_duplicate_verdicts_are_ignored(llm_api):
+    llm_api.respond = lambda: verdicts(
         verdict("REQ-001"),
         verdict("REQ-001", "unsupported"),
         verdict("REQ-002"),
@@ -135,13 +135,13 @@ def test_missing_verdict_fails_and_unknown_or_duplicate_verdicts_are_ignored(gem
     assert "Pa verdikt: REQ-001:improved" in result["generated_documentation"]
 
 
-def test_prompt_contains_cited_chunks_requirements_improvements_and_tests(gemini):
-    gemini.respond = all_supported
+def test_prompt_contains_cited_chunks_requirements_improvements_and_tests(llm_api):
+    llm_api.respond = all_supported
 
     verifier.verify_outputs(make_state())
 
-    prompt = gemini.prompt
-    assert gemini.system_prompt == verifier.SYSTEM_PROMPT
+    prompt = llm_api.prompt
+    assert llm_api.system_prompt == verifier.SYSTEM_PROMPT
     assert CHUNK["text"] in prompt
     assert UNCITED_CHUNK["text"] not in prompt
     assert '<requirement id="REQ-001" sources="spec-p3-c00004">The system must respond quickly.</requirement>' in prompt
@@ -153,8 +153,8 @@ def test_prompt_contains_cited_chunks_requirements_improvements_and_tests(gemini
     assert "Expected result: The system shows the error 'No data'." in prompt
 
 
-def test_verification_is_appended_to_documentation(gemini):
-    gemini.respond = lambda: verdicts(
+def test_verification_is_appended_to_documentation(llm_api):
+    llm_api.respond = lambda: verdicts(
         verdict("REQ-001"), verdict("REQ-001:improved"), verdict("REQ-002"),
         verdict("TC-001", "partially_supported", ["error 'No data'"], "The error message is assumed."),
     )
@@ -168,33 +168,33 @@ def test_verification_is_appended_to_documentation(gemini):
     assert "  - Supozim i pabazuar: error 'No data'" in doc
 
 
-def test_without_documentation_none_is_created(gemini):
-    gemini.respond = all_supported
+def test_without_documentation_none_is_created(llm_api):
+    llm_api.respond = all_supported
 
     assert "generated_documentation" not in verifier.verify_outputs(make_state(documentation=""))
 
 
-def test_nothing_to_verify_means_no_api_call(gemini):
+def test_nothing_to_verify_means_no_api_call(llm_api):
     state = create_initial_state("data/spec.pdf", "query")
 
     result = verifier.verify_outputs(state)
 
-    assert gemini.requests == []
+    assert llm_api.requests == []
     assert result == {"verification_results": [], "verification_passed": True}
 
 
-def test_gemini_error_is_reported_in_errors(gemini):
-    gemini.respond = lambda: api_error(503, "UNAVAILABLE", "The model is overloaded.")
+def test_llm_error_is_reported_in_errors(llm_api):
+    llm_api.respond = lambda: api_error(503, "service_unavailable", "The model is overloaded.")
 
     result = verifier.verify_outputs(make_state())
 
     assert result["verification_results"] == []
     assert result["verification_passed"] is False
-    assert result["errors"] == [{"agent": "verifier", "message": "Gemini ktheu gabim: The model is overloaded."}]
+    assert result["errors"] == [{"agent": "verifier", "message": "Claude ktheu gabim (503): The model is overloaded."}]
 
 
-def test_updates_state_inside_a_graph(gemini):
-    gemini.respond = all_supported
+def test_updates_state_inside_a_graph(llm_api):
+    llm_api.respond = all_supported
     graph = StateGraph(TechSpecState)
     graph.add_node("verifier", verifier.verify_outputs)
     graph.add_edge(START, "verifier")

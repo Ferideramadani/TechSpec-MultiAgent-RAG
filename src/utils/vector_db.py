@@ -10,10 +10,13 @@ import chromadb
 
 from src.config import PROJECT_ROOT
 from src.state import DocumentChunk, RetrievedChunk
+from src.utils.keyword_search import bm25_scores, reciprocal_rank_fusion
 
 DEFAULT_PERSIST_DIR = Path(os.getenv("TECHSPEC_CHROMA_DIR", PROJECT_ROOT / "chroma_db"))
 DEFAULT_COLLECTION = "tech_specs"
 DEFAULT_TOP_K = 5
+# Kufiri i pjesëve që rirenditen nga BM25; mjafton për dokumente me qindra faqe.
+MAX_CANDIDATES = 500
 
 
 class VectorStore:
@@ -63,40 +66,52 @@ class VectorStore:
         query: str,
         top_k: int = DEFAULT_TOP_K,
         source: str | None = None,
+        hybrid: bool = True,
     ) -> list[RetrievedChunk]:
-        """Kthen pjesët më të ngjashme, nga më e përafërta te më e largëta.
+        """Kthen pjesët më relevante për pyetjen, nga më e mira te më e dobëta.
 
-        `score` është ngjashmëria kosinus: sa më e lartë, aq më e afërt me pyetjen.
-        Me `source` kërkimi kufizohet te një dokument i vetëm.
+        Me `hybrid`, renditja semantike bashkohet me BM25 (fjalë kyçe) përmes RRF,
+        që të gjenden edhe termat e saktë si emrat e API-ve ose kodet e gabimeve.
+        `score` mbetet ngjashmëria kosinus dhe `keyword_score` pikët BM25 (0 kur asnjë
+        fjalë e pyetjes nuk gjendet në pjesë). Me `source` kërkimi kufizohet te një dokument.
         """
         if not query.strip():
             raise ValueError("Pyetja nuk mund të jetë bosh.")
         if top_k < 1:
             raise ValueError("top_k duhet të jetë të paktën 1.")
-        if self.count() == 0:
+
+        where = {"source": source} if source else None
+        available = len(self._collection.get(where=where, include=[])["ids"])
+        if available == 0:
             return []
 
+        # Kandidatët renditen semantikisht; BM25 i rirendit vetëm këta, që kërkimi të mbetet i shpejtë.
         result = self._collection.query(
             query_texts=[query],
-            n_results=top_k,
-            where={"source": source} if source else None,
+            n_results=min(available, MAX_CANDIDATES) if hybrid else min(available, top_k),
+            where=where,
             include=["documents", "metadatas", "distances"],
         )
+        ids, documents = result["ids"][0], result["documents"][0]
+        keyword_scores = bm25_scores(query, documents) if hybrid else [0.0] * len(ids)
+
+        order = list(range(len(ids)))
+        if hybrid:
+            keyword_ranking = sorted((i for i in order if keyword_scores[i] > 0), key=lambda i: -keyword_scores[i])
+            fused = reciprocal_rank_fusion([order, keyword_ranking])
+            order.sort(key=lambda i: -fused[i])  # Renditja e qëndrueshme ruan rendin semantik te barazimet.
+
         return [
             {
-                "chunk_id": chunk_id,
-                "text": text,
-                "source": metadata["source"],
-                "page": metadata.get("page"),
-                "section": metadata.get("section"),
-                "score": 1.0 - distance,
+                "chunk_id": ids[i],
+                "text": documents[i],
+                "source": result["metadatas"][0][i]["source"],
+                "page": result["metadatas"][0][i].get("page"),
+                "section": result["metadatas"][0][i].get("section"),
+                "score": 1.0 - result["distances"][0][i],
+                "keyword_score": keyword_scores[i],
             }
-            for chunk_id, text, metadata, distance in zip(
-                result["ids"][0],
-                result["documents"][0],
-                result["metadatas"][0],
-                result["distances"][0],
-            )
+            for i in order[:top_k]
         ]
 
     def delete_source(self, source: str) -> None:

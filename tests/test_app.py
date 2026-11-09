@@ -1,14 +1,15 @@
-"""Testet e ndërfaqes: aplikacioni real me grafin e plotë, bazë të përkohshme dhe Gemini të simuluar."""
+"""Testet e ndërfaqes: aplikacioni real me grafin e plotë, bazë të përkohshme dhe Claude të simuluar."""
 
 import re
 from pathlib import Path
 
 import pytest
-from fake_gemini import answer, api_error
+from fake_llm import answer, api_error
 from streamlit.testing.v1 import AppTest
 from test_vector_db import HashEmbedding
 
 from src.agents import parser, retriever
+from src.utils.analysis_io import analysis_from_json, analysis_to_json
 from src.utils.vector_db import VectorStore
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,16 +19,15 @@ QUESTION = "What security capabilities must an API management solution provide?"
 needs_sample = pytest.mark.skipif(not SAMPLE.is_file(), reason="data/sample_doc.pdf mungon")
 
 
-def respond_like_gemini(gemini, failing_schema=None):
+def respond_like_llm(llm_api, failing_schema=None):
     """Kthen përgjigje të vlefshme për secilin agjent, me citime të pjesëve që gjeti retriever-i."""
 
     def respond():
-        body = gemini.requests[-1]["body"]
-        properties = body["generationConfig"]["responseJsonSchema"]["properties"]
+        properties = llm_api.schema_properties
         if failing_schema in properties:
-            return api_error(429, "RESOURCE_EXHAUSTED", "Quota exceeded.")
+            return api_error(429, "tokens", "Quota exceeded.")
         if "api_endpoints" in properties:
-            chunk_id = re.search(r'<chunk id="([^"]+)"', gemini.prompt).group(1)
+            chunk_id = re.search(r'<chunk id="([^"]+)"', llm_api.prompt).group(1)
             return answer({
                 "requirements": [{
                     "kind": "non_functional",
@@ -60,12 +60,12 @@ def respond_like_gemini(gemini, failing_schema=None):
             for item_id in ("REQ-001", "REQ-001:improved", "TC-001")
         ]})
 
-    gemini.respond = respond
+    llm_api.respond = respond
 
 
 @pytest.fixture
-def app(tmp_path, monkeypatch, gemini):
-    """Aplikacioni real, me bazë të përkohshme dhe Gemini të simuluar."""
+def app(tmp_path, monkeypatch, llm_api):
+    """Aplikacioni real, me bazë të përkohshme dhe Claude të simuluar."""
     db_path = tmp_path / "db"
 
     def make_store():
@@ -73,7 +73,7 @@ def app(tmp_path, monkeypatch, gemini):
 
     monkeypatch.setattr(parser, "VectorStore", make_store)
     monkeypatch.setattr(retriever, "VectorStore", make_store)
-    respond_like_gemini(gemini)
+    respond_like_llm(llm_api)
     return AppTest.from_file(str(ROOT / "app.py"), default_timeout=120).run()
 
 
@@ -102,7 +102,7 @@ def test_app_starts_and_explains_the_steps(app):
     assert "Leximi dhe ndarja e dokumentit → Kërkimi i pjesëve relevante" in texts(app)
 
 
-def test_missing_upload_shows_an_error(app, gemini):
+def test_missing_upload_shows_an_error(app, llm_api):
     app.radio(key="source").set_value("Ngarko PDF")
     app.text_area(key="question").set_value(QUESTION)
     app.run()
@@ -111,25 +111,25 @@ def test_missing_upload_shows_an_error(app, gemini):
 
     assert errors(app) == ["Zgjidh ose ngarko një skedar PDF."]
     assert app.session_state.analysis is None
-    assert gemini.requests == []
+    assert llm_api.requests == []
 
 
 @needs_sample
-def test_missing_question_shows_an_error_without_running(app, gemini):
+def test_missing_question_shows_an_error_without_running(app, llm_api):
     analyze(app, question="   ")
 
     assert errors(app) == ["Shkruaj një pyetje për analizën."]
     assert app.session_state.analysis is None
-    assert gemini.requests == []
+    assert llm_api.requests == []
 
 
 @needs_sample
-def test_full_analysis_shows_every_step(app, gemini):
+def test_full_analysis_shows_every_step(app, llm_api):
     analyze(app)
 
     assert not app.exception
     assert not errors(app)
-    assert len(gemini.requests) == 4
+    assert len(llm_api.requests) == 4
     assert app.session_state.analysis["completed"] == [
         "parser", "retriever", "requirement", "critic", "generator", "verifier",
     ]
@@ -147,13 +147,32 @@ def test_full_analysis_shows_every_step(app, gemini):
 
 
 @needs_sample
-def test_agent_failure_shows_the_error_and_completed_steps(app, gemini):
-    respond_like_gemini(gemini, failing_schema="reviews")
+def test_saved_analysis_can_be_reopened_exactly(app, llm_api):
+    analyze(app)
+    analysis = app.session_state.analysis
+    assert app.get("download_button")
+
+    reopened = analysis_from_json(analysis_to_json(analysis))
+    app.session_state.analysis = reopened
+    requests_before = len(llm_api.requests)
+    app.run()
+
+    assert not app.exception
+    assert reopened["state"] == analysis["state"]
+    assert len(llm_api.requests) == requests_before
+    assert [metric.value for metric in app.metric] == ["1", "80%", "1", "Kaloi"]
+    assert "Kjo është një analizë e ruajtur" in texts(app)
+    assert "The solution must block API threats in real time." in texts(app)
+
+
+@needs_sample
+def test_agent_failure_shows_the_error_and_completed_steps(app, llm_api):
+    respond_like_llm(llm_api, failing_schema="reviews")
 
     analyze(app)
 
     assert not app.exception
-    assert errors(app) == ["**Critic:** U tejkalua kufiri i kërkesave të Gemini. Provo përsëri pas pak."]
+    assert errors(app) == ["**Critic:** U tejkalua kufiri i kërkesave të Claude. Provo përsëri pas pak."]
     assert app.session_state.analysis["completed"] == ["parser", "retriever", "requirement"]
     assert app.session_state.analysis["failed"] == ["critic"]
     assert [metric.value for metric in app.metric] == ["1", "-", "-", "-"]
@@ -165,12 +184,12 @@ def test_agent_failure_shows_the_error_and_completed_steps(app, gemini):
 
 
 @needs_sample
-def test_failed_requirement_step_does_not_claim_zero_requirements(app, gemini):
-    respond_like_gemini(gemini, failing_schema="api_endpoints")
+def test_failed_requirement_step_does_not_claim_zero_requirements(app, llm_api):
+    respond_like_llm(llm_api, failing_schema="api_endpoints")
 
     analyze(app)
 
-    assert errors(app) == ["**Requirement:** U tejkalua kufiri i kërkesave të Gemini. Provo përsëri pas pak."]
+    assert errors(app) == ["**Requirement:** U tejkalua kufiri i kërkesave të Claude. Provo përsëri pas pak."]
     assert [metric.value for metric in app.metric] == ["-", "-", "-", "-"]
     assert "Nuk u gjet asnjë kërkesë" not in texts(app)
     assert [w.value for w in app.warning] == ["Ky hap dështoi: Nxjerrja e kërkesave. Shih gabimin më lart."]

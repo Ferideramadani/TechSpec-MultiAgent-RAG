@@ -56,8 +56,57 @@ def test_search_returns_most_similar_chunk_first_with_all_fields(store):
     results = store.search("login token authentication", top_k=2)
 
     assert [result["chunk_id"] for result in results] == ["spec-c0", "spec-c1"]
-    assert results[0] == {**AUTH, "score": pytest.approx(results[0]["score"])}
+    assert results[0] == {
+        **AUTH,
+        "score": pytest.approx(results[0]["score"]),
+        "keyword_score": pytest.approx(results[0]["keyword_score"]),
+    }
     assert results[0]["score"] > results[1]["score"]
+    assert results[0]["keyword_score"] > 0
+    assert results[1]["keyword_score"] == 0
+
+
+class MisleadingEmbedding(HashEmbedding):
+    """Embedding që e vendos qëllimisht pjesën e duhur të fundit në renditjen semantike."""
+
+    def __call__(self, input):
+        return [[0.0, 1.0] + [0.0] * 126 if "Errors" in text else [1.0] + [0.0] * 127 for text in input]
+
+    @staticmethod
+    def name() -> str:
+        return "misleading-test"
+
+
+def test_hybrid_search_finds_exact_terms_that_semantic_search_misses(tmp_path):
+    store = VectorStore(tmp_path / "db", embedding_function=MisleadingEmbedding())
+    filler = [make_chunk(f"spec-c{i}", f"General overview paragraph number {i}.") for i in range(8)]
+    target = make_chunk("spec-target", "Errors return HTTP 429 from POST /api/v1/orders when limits are hit.")
+    store.add_chunks([*filler, target])
+
+    semantic = store.search("/api/v1/orders 429", top_k=3, hybrid=False)
+    hybrid = store.search("/api/v1/orders 429", top_k=3)
+
+    assert "spec-target" not in [r["chunk_id"] for r in semantic]
+    assert hybrid[0]["chunk_id"] == "spec-target"
+    assert hybrid[0]["keyword_score"] > 0
+
+
+def test_semantic_only_search_is_sorted_by_similarity(store):
+    store.add_chunks([AUTH, CACHE])
+
+    results = store.search("redis memory", top_k=2, hybrid=False)
+
+    assert [r["chunk_id"] for r in results] == ["spec-c1", "spec-c0"]
+    assert all(r["keyword_score"] == 0 for r in results)
+
+
+def test_hybrid_search_respects_source_and_top_k(store):
+    other = make_chunk("other-c0", "OAuth token authentication", source="other.pdf")
+    store.add_chunks([AUTH, CACHE, other])
+
+    results = store.search("OAuth token", top_k=1, source="spec.pdf")
+
+    assert [r["chunk_id"] for r in results] == ["spec-c0"]
 
 
 def test_score_is_cosine_similarity(store):

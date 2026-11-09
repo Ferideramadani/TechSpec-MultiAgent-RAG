@@ -1,6 +1,6 @@
 """Citation & Fact-Verifier Agent.
 
-Kontrollon me Gemini që kërkesat, versionet e tyre të përmirësuara dhe rastet e
+Kontrollon me modelin gjuhësor që kërkesat, versionet e tyre të përmirësuara dhe rastet e
 testimit mbështeten te dokumenti dhe nuk shtojnë supozime të pabazuara. Teksti i
 verifikuar dhe burimet merren nga gjendja; nga modeli merret vetëm verdikti.
 """
@@ -20,6 +20,7 @@ from src.state import (
     VerificationResult,
 )
 from src.utils.llm import LLMError, invoke_structured
+from src.utils.sources import format_chunk
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ def verify_outputs(state: TechSpecState) -> dict[str, Any]:
     """Nyja e LangGraph: plotëson `verification_results` dhe `verification_passed`.
 
     Verifikimi kalon kur çdo element merr verdikt dhe asnjë nuk është "unsupported".
-    Rezultati i shtohet edhe dokumentacionit. Gabimet e Gemini shënohen te `errors`.
+    Rezultati i shtohet edhe dokumentacionit. Gabimet e modelit shënohen te `errors`.
     """
     claims = _collect_claims(state["requirements"], state["requirement_reviews"], state["test_cases"])
     if not claims:
@@ -87,7 +88,7 @@ def verify_outputs(state: TechSpecState) -> dict[str, Any]:
     results = _to_results(output.verdicts, claims)
     missing = [item_id for item_id in claims if item_id not in {result["item_id"] for result in results}]
     if missing:
-        logger.warning("Gemini nuk dha verdikt për: %s", ", ".join(missing))
+        logger.warning("Modeli nuk dha verdikt për: %s", ", ".join(missing))
     passed = not missing and all(result["status"] != "unsupported" for result in results)
 
     update: dict[str, Any] = {"verification_results": results, "verification_passed": passed}
@@ -126,7 +127,7 @@ def _build_prompt(state: Mapping[str, Any], chunks: Sequence[DocumentChunk]) -> 
 
     parts = ["<chunks>"]
     parts += [
-        f'<chunk id="{chunk["chunk_id"]}" page="{chunk["page"]}">\n{chunk["text"]}\n</chunk>'
+        format_chunk(chunk)
         for chunk in chunks
         if chunk["chunk_id"] in cited
     ]

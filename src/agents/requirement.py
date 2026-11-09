@@ -1,6 +1,6 @@
 """API & Functional Requirement Extractor Agent.
 
-Dërgon te Gemini pjesët e gjetura nga retriever-i dhe merr kërkesat softuerike
+Dërgon te modeli gjuhësor pjesët e gjetura nga retriever-i dhe merr kërkesat softuerike
 dhe pikat API si JSON të strukturuar.
 """
 
@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from src.state import ApiEndpoint, Requirement, RetrievedChunk, TechSpecState
 from src.utils.llm import LLMError, invoke_structured
+from src.utils.sources import format_chunk
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ class ExtractionResult(BaseModel):
 def extract_requirements(state: TechSpecState) -> dict[str, Any]:
     """Nyja e LangGraph: plotëson `requirements` dhe `api_endpoints`.
 
-    Gabimet e Gemini shënohen te `errors` në vend që të ngrihen, sepse janë
+    Gabimet e modelit shënohen te `errors` në vend që të ngrihen, sepse janë
     dështime të jashtme që aplikacioni duhet t'i shfaqë.
     """
     chunks = state["retrieved_chunks"]
@@ -85,7 +86,7 @@ def extract_requirements(state: TechSpecState) -> dict[str, Any]:
 
 def _build_prompt(query: str, chunks: Sequence[RetrievedChunk]) -> str:
     excerpts = "\n".join(
-        f'<chunk id="{chunk["chunk_id"]}" page="{chunk["page"]}">\n{chunk["text"]}\n</chunk>'
+        format_chunk(chunk)
         for chunk in chunks
     )
     return f"The user is analyzing this question: {query}\n\n<chunks>\n{excerpts}\n</chunks>"

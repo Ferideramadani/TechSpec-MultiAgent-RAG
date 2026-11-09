@@ -1,7 +1,7 @@
 """Testet e agjentit gjenerues. Gabimet e API-së testohen te test_llm.py."""
 
 import pytest
-from fake_gemini import answer, api_error
+from fake_llm import answer, api_error
 from langgraph.graph import END, START, StateGraph
 
 from src.agents import generator
@@ -57,8 +57,8 @@ def make_state(requirements=(FAST, EXPORT), reviews=(FAST_REVIEW,)):
     return state
 
 
-def test_generates_numbered_test_cases(gemini):
-    gemini.respond = lambda: generated(
+def test_generates_numbered_test_cases(llm_api):
+    llm_api.respond = lambda: generated(
         case(),
         case(["REQ-001"], "Slow response", "boundary"),
         case(["REQ-002"], "Export a report"),
@@ -80,13 +80,13 @@ def test_generates_numbered_test_cases(gemini):
     assert result["test_cases"][1]["test_type"] == "boundary"
 
 
-def test_prompt_contains_original_improved_version_and_issues(gemini):
-    gemini.respond = lambda: generated(case())
+def test_prompt_contains_original_improved_version_and_issues(llm_api):
+    llm_api.respond = lambda: generated(case())
 
     generator.generate_tests_and_docs(make_state())
 
-    assert gemini.system_prompt == generator.SYSTEM_PROMPT
-    prompt = gemini.prompt
+    assert llm_api.system_prompt == generator.SYSTEM_PROMPT
+    prompt = llm_api.prompt
     assert '<requirement id="REQ-001" kind="non_functional" priority="high">' in prompt
     assert "<original>The system must respond quickly.</original>" in prompt
     assert f"<improved>{FAST_REVIEW['improved_version']}</improved>" in prompt
@@ -96,8 +96,8 @@ def test_prompt_contains_original_improved_version_and_issues(gemini):
     assert "<improved>" not in export_block
 
 
-def test_invalid_test_cases_are_removed(gemini):
-    gemini.respond = lambda: generated(
+def test_invalid_test_cases_are_removed(llm_api):
+    llm_api.respond = lambda: generated(
         case(["REQ-001", "REQ-999", "REQ-001"]),
         case(["REQ-999"], "Unknown requirement"),
         case([], "No requirement"),
@@ -110,8 +110,8 @@ def test_invalid_test_cases_are_removed(gemini):
     assert result["test_cases"][0]["test_id"] == "TC-001"
 
 
-def test_no_valid_test_case_is_an_error(gemini):
-    gemini.respond = lambda: generated(case(["REQ-999"]))
+def test_no_valid_test_case_is_an_error(llm_api):
+    llm_api.respond = lambda: generated(case(["REQ-999"]))
 
     result = generator.generate_tests_and_docs(make_state())
 
@@ -120,17 +120,17 @@ def test_no_valid_test_case_is_an_error(gemini):
     assert result["errors"][0]["agent"] == "generator"
 
 
-def test_no_requirements_means_no_api_call_but_still_documents(gemini):
+def test_no_requirements_means_no_api_call_but_still_documents(llm_api):
     result = generator.generate_tests_and_docs(make_state(requirements=[], reviews=[]))
 
-    assert gemini.requests == []
+    assert llm_api.requests == []
     assert "errors" not in result
     assert result["test_cases"] == []
     assert "Nuk u gjet asnjë kërkesë" in result["generated_documentation"]
 
 
-def test_gemini_error_is_reported_in_errors(gemini):
-    gemini.respond = lambda: api_error(429, "RESOURCE_EXHAUSTED", "Quota exceeded.")
+def test_llm_error_is_reported_in_errors(llm_api):
+    llm_api.respond = lambda: api_error(429, "tokens", "Quota exceeded.")
 
     result = generator.generate_tests_and_docs(make_state())
 
@@ -140,8 +140,8 @@ def test_gemini_error_is_reported_in_errors(gemini):
     assert "kufiri" in result["errors"][0]["message"]
 
 
-def test_documentation_contains_all_sections(gemini):
-    gemini.respond = lambda: generated(case(), case(["REQ-001"], "Slow response", "boundary"))
+def test_documentation_contains_all_sections(llm_api):
+    llm_api.respond = lambda: generated(case(), case(["REQ-001"], "Slow response", "boundary"))
     state = make_state()
     state["api_endpoints"] = [{
         "method": "GET",
@@ -166,6 +166,14 @@ def test_documentation_contains_all_sections(gemini):
     assert "| REQ-002 | pa test |" in doc
 
 
+def test_documentation_shows_the_section_next_to_the_page():
+    state = make_state(reviews=[])
+    state["retrieved_chunks"] = [{**CHUNK, "section": "Performance"}]
+    state["test_cases"] = []
+
+    assert "| The system must respond quickly. | 3 (Performance) |" in generator.render_documentation(state)
+
+
 def test_table_cells_cannot_break_the_markdown_table():
     state = make_state(requirements=[{**FAST, "description": "Use A | B\nor C."}], reviews=[])
     state["test_cases"] = []
@@ -185,8 +193,8 @@ def test_documentation_finds_pages_in_either_chunk_list(chunks_field):
     assert "| Users can export reports. | 3 |" in generator.render_documentation(state)
 
 
-def test_updates_state_inside_a_graph(gemini):
-    gemini.respond = lambda: generated(case(), case(["REQ-002"], "Export a report"))
+def test_updates_state_inside_a_graph(llm_api):
+    llm_api.respond = lambda: generated(case(), case(["REQ-002"], "Export a report"))
     graph = StateGraph(TechSpecState)
     graph.add_node("generator", generator.generate_tests_and_docs)
     graph.add_edge(START, "generator")

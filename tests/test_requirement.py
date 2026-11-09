@@ -1,6 +1,6 @@
 """Testet e agjentit të kërkesave. Gabimet e API-së testohen te test_llm.py."""
 
-from fake_gemini import answer, api_error
+from fake_llm import answer, api_error
 from langgraph.graph import END, START, StateGraph
 
 from src.agents import requirement
@@ -41,8 +41,8 @@ def make_state(chunks=(AUTH_CHUNK, LIMIT_CHUNK), query="How are orders created?"
     return state
 
 
-def test_extracts_requirements_and_endpoints(gemini):
-    gemini.respond = lambda: extraction(
+def test_extracts_requirements_and_endpoints(llm_api):
+    llm_api.respond = lambda: extraction(
         [
             requirement_item(),
             requirement_item("non_functional", ["spec-p2-c00001"], "Clients are limited to 100 requests per minute."),
@@ -65,21 +65,28 @@ def test_extracts_requirements_and_endpoints(gemini):
     }]
 
 
-def test_prompt_contains_query_and_chunks(gemini):
-    gemini.respond = lambda: extraction()
+def test_prompt_contains_query_and_chunks(llm_api):
+    llm_api.respond = lambda: extraction()
 
     requirement.extract_requirements(make_state())
 
-    assert gemini.system_prompt == requirement.SYSTEM_PROMPT
-    assert "How are orders created?" in gemini.prompt
-    assert '<chunk id="spec-p1-c00000" page="1">' in gemini.prompt
-    assert LIMIT_CHUNK["text"] in gemini.prompt
-    schema = gemini.requests[0]["body"]["generationConfig"]["responseJsonSchema"]
-    assert set(schema["properties"]) == {"requirements", "api_endpoints"}
+    assert llm_api.system_prompt == requirement.SYSTEM_PROMPT
+    assert "How are orders created?" in llm_api.prompt
+    assert '<chunk id="spec-p1-c00000" page="1">' in llm_api.prompt
+    assert LIMIT_CHUNK["text"] in llm_api.prompt
+    assert set(llm_api.schema_properties) == {"requirements", "api_endpoints"}
 
 
-def test_invented_citations_are_removed(gemini):
-    gemini.respond = lambda: extraction(
+def test_prompt_names_the_section_of_each_chunk(llm_api):
+    llm_api.respond = lambda: extraction()
+
+    requirement.extract_requirements(make_state(chunks=[{**AUTH_CHUNK, "section": "Authentication"}]))
+
+    assert '<chunk id="spec-p1-c00000" page="1" section="Authentication">' in llm_api.prompt
+
+
+def test_invented_citations_are_removed(llm_api):
+    llm_api.respond = lambda: extraction(
         [
             requirement_item(ids=["spec-p1-c00000", "invented-id", "spec-p1-c00000"]),
             requirement_item(ids=["invented-id"], description="Only invented sources."),
@@ -95,22 +102,22 @@ def test_invented_citations_are_removed(gemini):
     assert result["api_endpoints"] == []
 
 
-def test_empty_lists_are_a_valid_answer(gemini):
-    gemini.respond = lambda: extraction()
+def test_empty_lists_are_a_valid_answer(llm_api):
+    llm_api.respond = lambda: extraction()
 
     assert requirement.extract_requirements(make_state()) == {"requirements": [], "api_endpoints": []}
 
 
-def test_no_chunks_means_no_api_call(gemini):
+def test_no_chunks_means_no_api_call(llm_api):
     result = requirement.extract_requirements(make_state(chunks=[]))
 
-    assert gemini.requests == []
+    assert llm_api.requests == []
     assert result["errors"][0]["agent"] == "requirement_extractor"
     assert "retriever" in result["errors"][0]["message"]
 
 
-def test_gemini_error_is_reported_in_errors(gemini):
-    gemini.respond = lambda: api_error(429, "RESOURCE_EXHAUSTED", "Quota exceeded.")
+def test_llm_error_is_reported_in_errors(llm_api):
+    llm_api.respond = lambda: api_error(429, "tokens", "Quota exceeded.")
 
     result = requirement.extract_requirements(make_state())
 
@@ -120,8 +127,8 @@ def test_gemini_error_is_reported_in_errors(gemini):
     assert "kufiri" in result["errors"][0]["message"]
 
 
-def test_updates_state_inside_a_graph(gemini):
-    gemini.respond = lambda: extraction([requirement_item()])
+def test_updates_state_inside_a_graph(llm_api):
+    llm_api.respond = lambda: extraction([requirement_item()])
     graph = StateGraph(TechSpecState)
     graph.add_node("requirement", requirement.extract_requirements)
     graph.add_edge(START, "requirement")

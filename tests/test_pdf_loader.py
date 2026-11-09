@@ -12,8 +12,16 @@ from src.utils.pdf_loader import (
 )
 
 
-def write_pdf(path: Path, pages: list[list[str]]) -> Path:
-    """Krijon një PDF të vërtetë me tekst, ku çdo faqe është një listë rreshtash."""
+def heading(*fragments: str, size: int = 16):
+    """Një rresht titulli me shkronja më të mëdha; disa copëza imitojnë fjalët e ndara nga PDF-ja."""
+    return list(fragments), size
+
+
+def write_pdf(path: Path, pages: list[list]) -> Path:
+    """Krijon një PDF të vërtetë me tekst, ku çdo faqe është një listë rreshtash.
+
+    Një rresht është tekst i thjeshtë me madhësi 10, ose `heading(...)` për një titull.
+    """
     count = len(pages)
     page_ids = [4 + 2 * i for i in range(count)]
     objects = {
@@ -23,10 +31,14 @@ def write_pdf(path: Path, pages: list[list[str]]) -> Path:
         3: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     }
     for page_id, lines in zip(page_ids, pages):
-        body = b"BT /F1 10 Tf 40 780 Td 12 TL "
+        body = b"BT 40 780 Td "
         for line in lines:
-            escaped = line.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
-            body += b"(%s) Tj T* " % escaped.encode("latin-1")
+            fragments, size = line if isinstance(line, tuple) else ([line], 10)
+            body += b"/F1 %d Tf %d TL " % (size, size + 2)
+            for fragment in fragments:
+                escaped = fragment.replace("\\", r"\\").replace("(", r"\(").replace(")", r"\)")
+                body += b"(%s) Tj " % escaped.encode("latin-1")
+            body += b"T* "
         body += b"ET"
         objects[page_id] = (
             b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
@@ -184,3 +196,65 @@ def test_splitting_always_terminates_and_keeps_the_end(text, size, overlap):
 def test_chunk_pages_rejects_invalid_sizes(size, overlap):
     with pytest.raises(ValueError):
         chunk_pages([PageText(1, "text")], "doc.pdf", size, overlap)
+
+
+BODY = [f"The gateway enforces policy rule number {i} on every request." for i in range(25)]
+
+
+def test_headings_are_found_from_larger_font(tmp_path):
+    path = write_pdf(tmp_path / "spec.pdf", [[heading("Authentication"), *BODY[:5], heading("Rate Limits"), *BODY[:5]]])
+
+    [page] = load_pdf(path)
+
+    assert page.headings == ("Authentication", "Rate Limits")
+
+
+def test_heading_split_into_fragments_keeps_the_page_spelling(tmp_path):
+    path = write_pdf(tmp_path / "spec.pdf", [[heading("AT A GL", "ANC", "E"), *BODY[:5]]])
+
+    [page] = load_pdf(path)
+
+    assert page.headings == ("AT A GLANCE",)
+
+
+def test_slightly_larger_text_is_not_a_heading(tmp_path):
+    path = write_pdf(tmp_path / "spec.pdf", [[heading("Lead paragraph text", size=11), *BODY[:5]]])
+
+    assert load_pdf(path)[0].headings == ()
+
+
+def test_document_without_headings_has_no_sections(tmp_path):
+    path = write_pdf(tmp_path / "spec.pdf", [BODY])
+
+    chunks = load_and_chunk_pdf(path, chunk_size=300, chunk_overlap=50)
+
+    assert {chunk["section"] for chunk in chunks} == {None}
+
+
+def test_chunks_get_the_last_heading_before_them_across_pages(tmp_path):
+    path = write_pdf(
+        tmp_path / "spec.pdf",
+        [
+            [heading("Authentication"), *BODY],
+            [*BODY[:10], heading("Rate Limits"), *BODY],
+        ],
+    )
+
+    chunks = load_and_chunk_pdf(path, chunk_size=300, chunk_overlap=50)
+
+    first_page = [c["section"] for c in chunks if c["page"] == 1]
+    second_page = [c["section"] for c in chunks if c["page"] == 2]
+    assert set(first_page) == {"Authentication"}
+    # Faqja 2 fillon me vazhdimin e seksionit nga faqja 1, pastaj vjen titulli i ri.
+    assert second_page[0] == "Authentication"
+    assert second_page[-1] == "Rate Limits"
+    assert second_page == sorted(second_page)
+
+
+def test_chunk_that_starts_just_before_a_heading_is_named_by_it():
+    text = "Intro sentence.\n\nRate Limits\n" + "Clients may send 100 requests per minute. " * 20
+    pages = [PageText(1, text, ("Rate Limits",))]
+
+    chunks = chunk_pages(pages, "doc.pdf", chunk_size=300, chunk_overlap=0)
+
+    assert chunks[0]["section"] == "Rate Limits"

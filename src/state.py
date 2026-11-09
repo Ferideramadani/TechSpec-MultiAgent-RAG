@@ -28,7 +28,8 @@ class DocumentChunk(TypedDict):
 class RetrievedChunk(DocumentChunk):
     """Një pjesë e dokumentit e gjetur nga kërkimi në bazën vektoriale."""
 
-    score: float
+    score: float  # Ngjashmëria kosinus me pyetjen.
+    keyword_score: float  # Pikët BM25; 0 kur asnjë fjalë e pyetjes nuk gjendet në pjesë.
 
 
 class ApiEndpoint(TypedDict):
@@ -107,7 +108,7 @@ class TechSpecState(TypedDict):
 
     # 5. Test Case & Documentation Generator Agent
     test_cases: list[TestCase]
-    generated_documentation: str  # Markdown, i ndërtuar nga kodi pa thirrje te Gemini.
+    generated_documentation: str  # Markdown, i ndërtuar nga kodi pa thirrje te modeli gjuhësor.
 
     # 6. Citation & Fact-Verifier Agent
     verification_results: list[VerificationResult]

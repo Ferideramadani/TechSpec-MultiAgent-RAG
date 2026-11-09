@@ -1,7 +1,7 @@
 """Requirement Quality Critic Agent.
 
 Vlerëson cilësinë e kërkesave të nxjerra sipas pesë kritereve dhe sugjeron një
-version të përmirësuar për secilën. Gemini gjykon vetëm cilat kritere nuk
+version të përmirësuar për secilën. Modeli gjykon vetëm cilat kritere nuk
 plotësohen; përqindja llogaritet këtu, që të jetë e përsëritshme dhe e shpjegueshme.
 """
 
@@ -20,6 +20,7 @@ from src.state import (
     TechSpecState,
 )
 from src.utils.llm import LLMError, invoke_structured
+from src.utils.sources import format_chunk
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ def critique_requirements(state: TechSpecState) -> dict[str, Any]:
     """Nyja e LangGraph: plotëson `requirement_reviews`, `quality_score` dhe `quality_summary`.
 
     Mungesa e kërkesave nuk është gabim: dokumenti thjesht mund të mos ketë asnjë.
-    Gabimet e Gemini shënohen te `errors` në vend që të ngrihen.
+    Gabimet e modelit shënohen te `errors` në vend që të ngrihen.
     """
     requirements = state["requirements"]
     if not requirements:
@@ -93,7 +94,7 @@ def critique_requirements(state: TechSpecState) -> dict[str, Any]:
 
     reviews = _to_reviews(result.reviews, requirements)
     if not reviews:
-        return _failure("Gemini nuk ktheu vlerësim për asnjë nga kërkesat.")
+        return _failure("Modeli nuk ktheu vlerësim për asnjë nga kërkesat.")
 
     return {
         "requirement_reviews": reviews,
@@ -117,7 +118,7 @@ def _build_prompt(requirements: Sequence[Requirement], chunks: Sequence[Document
     # Dërgohen vetëm pjesët e cituara, që kërkesa të gjykohet në kontekstin e saj.
     cited = {chunk_id for req in requirements for chunk_id in req["source_chunk_ids"]}
     excerpts = "\n".join(
-        f'<chunk id="{chunk["chunk_id"]}" page="{chunk["page"]}">\n{chunk["text"]}\n</chunk>'
+        format_chunk(chunk)
         for chunk in chunks
         if chunk["chunk_id"] in cited
     )
@@ -130,7 +131,7 @@ def _to_reviews(items: Sequence[ExtractedReview], requirements: Sequence[Require
     for req in requirements:
         item = by_id.get(req["requirement_id"])
         if item is None:
-            logger.warning("Gemini nuk e vlerësoi kërkesën %s.", req["requirement_id"])
+            logger.warning("Modeli nuk e vlerësoi kërkesën %s.", req["requirement_id"])
             continue
         issues: list[QualityIssue] = [
             {"criterion": issue.criterion, "problem": issue.problem} for issue in item.issues

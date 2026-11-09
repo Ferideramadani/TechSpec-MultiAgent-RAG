@@ -1,7 +1,7 @@
 """Document Parser & Tech Spec Ingestion Agent.
 
 Lexon PDF-në, e ndan në pjesë dhe i ruan në bazën vektoriale. Ky agjent nuk
-thërret modelin gjuhësor (Gemini).
+thërret modelin gjuhësor.
 """
 
 import logging

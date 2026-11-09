@@ -1,6 +1,6 @@
 """Test Case & Documentation Generator Agent.
 
-Gemini shkruan rastet e testimit për kërkesat. Dokumentacioni Markdown ndërtohet
+Modeli gjuhësor shkruan rastet e testimit për kërkesat. Dokumentacioni Markdown ndërtohet
 nga kodi me të dhënat e gjendjes, ndaj nuk përmban asgjë të shpikur dhe nuk
 kërkon thirrje shtesë te API-ja.
 """
@@ -13,13 +13,13 @@ from typing import Any, Literal
 from pydantic import BaseModel
 
 from src.state import (
-    DocumentChunk,
     Requirement,
     RequirementReview,
     TechSpecState,
     TestCase,
 )
 from src.utils.llm import LLMError, invoke_structured
+from src.utils.sources import describe_sources
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ def generate_tests_and_docs(state: TechSpecState) -> dict[str, Any]:
     """Nyja e LangGraph: plotëson `test_cases` dhe `generated_documentation`.
 
     Pa kërkesa nuk ka çfarë të testohet, por dokumentacioni ndërtohet sërish që
-    përdoruesi të shohë se nuk u gjet asnjë kërkesë. Gabimet e Gemini shënohen te
+    përdoruesi të shohë se nuk u gjet asnjë kërkesë. Gabimet e modelit shënohen te
     `errors` në vend që të ngrihen.
     """
     requirements = state["requirements"]
@@ -80,7 +80,7 @@ def generate_tests_and_docs(state: TechSpecState) -> dict[str, Any]:
 
         test_cases = _to_test_cases(result.test_cases, requirements)
         if not test_cases:
-            return _failure("Gemini nuk ktheu asnjë rast testimi të vlefshëm.")
+            return _failure("Modeli nuk ktheu asnjë rast testimi të vlefshëm.")
 
     return {
         "test_cases": test_cases,
@@ -134,11 +134,11 @@ def _to_test_cases(items: Sequence[GeneratedTestCase], requirements: Sequence[Re
 
 
 def render_documentation(state: Mapping[str, Any]) -> str:
-    """Ndërton dokumentacionin Markdown nga gjendja, pa thirrje te Gemini."""
+    """Ndërton dokumentacionin Markdown nga gjendja, pa thirrje te modeli gjuhësor."""
     requirements: Sequence[Requirement] = state["requirements"]
     reviews = {review["requirement_id"]: review for review in state["requirement_reviews"]}
     test_cases: Sequence[TestCase] = state["test_cases"]
-    pages = _pages_by_chunk(state["retrieved_chunks"] or state["document_chunks"])
+    chunks = state["retrieved_chunks"] or state["document_chunks"]
 
     lines = [
         f"# Specifikimi teknik: {Path(state['document_path']).name}",
@@ -153,10 +153,9 @@ def render_documentation(state: Mapping[str, Any]) -> str:
         for req in requirements:
             review = reviews.get(req["requirement_id"])
             quality = f"{review['score']}%" if review else "pa vlerësim"
-            source_pages = sorted({pages[cid] for cid in req["source_chunk_ids"] if pages.get(cid) is not None})
             lines.append(
                 f"| {req['requirement_id']} | {_KIND_LABELS[req['kind']]} | {req['priority']} | {quality} "
-                f"| {_cell(req['description'])} | {', '.join(map(str, source_pages)) or '-'} |"
+                f"| {_cell(req['description'])} | {_cell(describe_sources(req['source_chunk_ids'], chunks)) or '-'} |"
             )
     else:
         lines.append("Nuk u gjet asnjë kërkesë në pjesët e analizuara të dokumentit.")
@@ -203,10 +202,6 @@ def render_documentation(state: Mapping[str, Any]) -> str:
 
 _KIND_LABELS = {"functional": "funksionale", "non_functional": "jofunksionale"}
 _TYPE_LABELS = {"positive": "pozitiv", "negative": "negativ", "boundary": "kufitar"}
-
-
-def _pages_by_chunk(chunks: Sequence[DocumentChunk]) -> dict[str, int | None]:
-    return {chunk["chunk_id"]: chunk["page"] for chunk in chunks}
 
 
 def _cell(text: str) -> str:
