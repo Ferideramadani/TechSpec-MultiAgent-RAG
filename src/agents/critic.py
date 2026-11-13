@@ -28,32 +28,17 @@ AGENT_NAME = "critic"
 CRITERIA: tuple[QualityCriterion, ...] = get_args(QualityCriterion)
 
 SYSTEM_PROMPT = """\
-You review the quality of software requirements. Each requirement is in a \
-<requirement> tag with its id, kind, priority and the ids of the document chunks \
-it was extracted from. The chunks follow in <chunk> tags.
+Review each <requirement> (with its id, kind, priority and source chunk ids; the chunks follow in <chunk> tags) against five criteria, and report an issue only for a failed one:
+- clarity: understood on first reading; one requirement per statement.
+- ambiguity: no vague words such as "fast", "robust", "appropriate", "user-friendly" or "etc.".
+- testability: a pass/fail test can be written for it.
+- measurability: a quality has a number, unit or threshold; a function has defined inputs, outputs and conditions.
+- completeness: the actor, the action and the conditions are present.
 
-For each requirement, check five criteria and report an issue only for a criterion \
-it fails:
-- clarity: a reader understands it on first reading, and it states one requirement.
-- ambiguity: it contains no words that allow several interpretations, such as \
-"fast", "robust", "appropriate", "user-friendly" or "etc.".
-- testability: a tester could write a pass/fail test for it.
-- measurability: a quality has a measurable target (number, unit, threshold); a \
-function has defined inputs, outputs and conditions.
-- completeness: the actor, the action and the conditions are all present.
-
-Describe each problem in one sentence that names the exact words or the missing \
-detail. Judge the requirement statement, not the document.
-
-improved_version: rewrite the requirement so it passes all five criteria and keeps \
-its meaning. Never invent facts, numbers, names or technologies that the chunks do \
-not contain; write a placeholder such as [TBD: maximum response time in ms] instead.
-
-summary: two or three sentences on the overall quality of the set and its most \
-common problem.
-
-Return exactly one review per requirement id.\
-"""
+problem: one short sentence naming the exact words or the missing detail. Judge the statement, not the document.
+improved_version: a rewrite that passes all five criteria and keeps the meaning. Never invent facts, numbers, names or technologies absent from the chunks; use a placeholder such as [TBD: maximum response time in ms].
+summary: two sentences on the overall quality of the set and its most common problem.
+Return exactly one review per requirement id."""
 
 
 class ExtractedIssue(BaseModel):

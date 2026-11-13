@@ -28,28 +28,14 @@ AGENT_NAME = "verifier"
 IMPROVED_SUFFIX = ":improved"
 
 SYSTEM_PROMPT = """\
-You check generated software documentation against its source document. You \
-receive document chunks, requirements extracted from them, improved rewrites of \
-some requirements, and test cases written for the requirements.
+Check generated documentation against its source. You receive document chunks, requirements, improved rewrites and test cases. Give one verdict per item id:
+- REQ-...: must be stated or directly described by the chunks in its sources attribute.
+- REQ-...:improved: may restructure, clarify and use [TBD: ...] placeholders, but must not add facts, numbers, conditions, actors or technologies absent from its requirement and chunks.
+- TC-...: must verify the requirements it lists. [TBD: ...] placeholders and ordinary test mechanics such as starting the system, sending a request or measuring time are fine; a specific expected behaviour of the system, such as an error response, a message or a state, is an assumption unless the requirement or its chunks state it.
 
-Give one verdict for every item id:
-- A requirement (REQ-...) must be stated or directly described by the chunks listed \
-in its sources attribute.
-- An improved rewrite (REQ-...:improved) may restructure and clarify its requirement \
-and may contain [TBD: ...] placeholders, but must not add facts, numbers, conditions, \
-actors or technologies that are not in the requirement or its chunks.
-- A test case (TC-...) must verify the requirements it lists. Its steps and expected \
-result may contain [TBD: ...] placeholders and ordinary test mechanics such as \
-starting the system, sending a request or measuring time. A specific behaviour the \
-system is expected to show, such as an error response, a message or a state, is an \
-assumption unless the requirement or its chunks state it.
-
-status: supported when nothing is unsupported; partially_supported when the item is \
-grounded but contains at least one unsupported detail; unsupported when its main \
-claim has no basis in the sources.
-unsupported_claims: quote each unsupported detail briefly; empty when supported.
-explanation: one sentence.\
-"""
+status: supported when nothing is unsupported; partially_supported when grounded but with at least one unsupported detail; unsupported when the main claim has no basis in the sources.
+unsupported_claims: a brief quote of each unsupported detail; empty when supported.
+explanation: one short sentence."""
 
 _STATUS_LABELS = {
     "supported": "i mbështetur",

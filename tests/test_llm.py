@@ -43,14 +43,27 @@ def test_request_uses_structured_output_without_forced_tools_or_temperature(llm_
     assert "temperature" not in body
 
 
-def test_request_enables_the_refusal_fallback(llm_api):
+def test_default_model_is_haiku_without_the_fallback(llm_api):
     llm_api.respond = lambda: answer({"items": []})
 
     call()
 
     [request] = llm_api.requests
-    assert request["body"]["fallbacks"] == "default"
-    assert config.FALLBACK_BETA in request["headers"]["anthropic-beta"]
+    assert config.settings.model == "claude-haiku-5-5"
+    # claude-haiku-5-5 nuk ka model rezervë; parametri mund ta bënte kërkesën të refuzohej.
+    assert "fallbacks" not in request["body"]
+    assert config.FALLBACK_BETA not in request["headers"].get("anthropic-beta", "")
+
+
+@pytest.mark.parametrize(
+    ("model", "has_fallback"),
+    [("claude-sonnet-5-5", True), ("claude-opus-5-5", True), ("claude-haiku-5-5", False), ("claude-x", False)],
+)
+def test_fallback_is_sent_only_to_models_that_support_it(model, has_fallback):
+    options = config.fallback_options(model)
+
+    assert (options.get("model_kwargs") == {"fallbacks": "default"}) is has_fallback
+    assert (options.get("betas") == [config.FALLBACK_BETA]) is has_fallback
 
 
 def test_missing_api_key_means_no_request(llm_api, monkeypatch):
@@ -144,6 +157,6 @@ def test_get_llm_uses_settings(monkeypatch):
         assert model.anthropic_api_key.get_secret_value() == "key-123"
         assert model.max_tokens == 1234
         assert model.temperature is None
-        assert model.betas == [config.FALLBACK_BETA]
+        assert not model.betas
     finally:
         config.get_llm.cache_clear()

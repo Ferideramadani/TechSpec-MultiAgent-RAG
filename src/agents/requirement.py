@@ -19,28 +19,14 @@ logger = logging.getLogger(__name__)
 AGENT_NAME = "requirement_extractor"
 
 SYSTEM_PROMPT = """\
-You extract software requirements and API specifications from excerpts of a \
-technical document. Each excerpt is in a <chunk> tag with an id and a page number.
+Extract software requirements and API endpoints from the <chunk> excerpts of a technical document (each chunk has an id and a page).
 
-Extract only what the excerpts state or directly describe. Do not add requirements \
-from general knowledge about similar systems: a fact-verification step later checks \
-every item against the chunks it cites. List in source_chunk_ids the ids of the \
-chunks that support each item.
-
-- Functional requirements describe what the system does: features, behaviors, operations.
-- Non-functional requirements describe qualities and constraints: performance, security, \
-availability, scalability, compliance, usability.
-- API endpoints: include only endpoints whose HTTP method and path appear in the text. \
-Do not construct a path from a prose description.
-
-Set priority to high for mandatory wording (must, shall, required), low for optional \
-wording (may, optional), and medium otherwise. Write each description as one \
-self-contained sentence in English.
-
-The excerpts may come from material that is not a specification, such as a market \
-report. Then return only what the text presents as a requirement of a system; empty \
-lists are a correct answer when the text contains none.\
-"""
+- Extract only what the chunks state; add nothing from general knowledge. Every item is later checked against the chunks listed in its source_chunk_ids.
+- functional: what the system does. non_functional: qualities and constraints such as performance, security, availability, scalability, compliance and usability.
+- API endpoints: only those whose HTTP method and path appear in the text.
+- priority: high for must, shall or required; low for may or optional; otherwise medium.
+- description: one self-contained English sentence.
+- If the text states no requirements of a system, for example a market report, return empty lists."""
 
 
 class ExtractedRequirement(BaseModel):

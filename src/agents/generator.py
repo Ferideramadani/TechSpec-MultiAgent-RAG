@@ -26,27 +26,12 @@ logger = logging.getLogger(__name__)
 AGENT_NAME = "generator"
 
 SYSTEM_PROMPT = """\
-You write test cases for software requirements. Each requirement is in a \
-<requirement> tag with its original statement, extracted from a document. When a \
-reviewer has assessed it, an improved version and the quality issues found follow.
+Write test cases for each <requirement>. Each has its original statement and, when reviewed, an improved version and the quality issues found.
 
-Write test cases that verify the original requirement. Use the improved version \
-only to make vague steps concrete. Where a value is unknown, keep a placeholder such \
-as [TBD: maximum response time in ms] in the step or the expected result; never \
-invent numbers, endpoints, names or technologies.
-
-For each requirement, write one positive test case, and add a negative or boundary \
-test case when the requirement has a condition, a limit or a failure mode to check. \
-Write at most three test cases per requirement.
-
-For each test case:
-- title: what is verified, in a few words.
-- test_type: positive, negative or boundary.
-- preconditions: the state the system must be in before the test; may be empty.
-- steps: imperative actions, one action per step.
-- expected_result: an observable outcome that decides pass or fail.
-- requirement_ids: the ids of the requirements the test verifies.\
-"""
+- Verify the original requirement; use the improved version only to make vague steps concrete.
+- Keep unknown values as placeholders such as [TBD: maximum response time in ms]; never invent numbers, endpoints, names or technologies.
+- Per requirement: one positive test, plus one negative or boundary test when it has a condition, a limit or a failure mode. At most three tests per requirement.
+- title: a few words. preconditions: may be empty. steps: one imperative action each. expected_result: an observable outcome that decides pass or fail. requirement_ids: the requirements the test verifies."""
 
 
 class GeneratedTestCase(BaseModel):

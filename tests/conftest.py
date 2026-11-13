@@ -27,8 +27,7 @@ def llm_api(llm_server, monkeypatch):
         max_tokens=config.settings.max_tokens,
         max_retries=0,
         timeout=10,
-        betas=[config.FALLBACK_BETA],
-        model_kwargs={"fallbacks": "default"},
+        **config.fallback_options(config.settings.model),
     )
     monkeypatch.setattr(llm, "get_llm", lambda: model)
     monkeypatch.setattr(llm, "settings", replace(config.settings, anthropic_api_key="test-key"))

@@ -221,3 +221,7 @@ __marimo__/
 
 # ChromaDB
 chroma_db/
+
+# SQLite (përdoruesit dhe historiku)
+techspec.db
+techspec.db-*

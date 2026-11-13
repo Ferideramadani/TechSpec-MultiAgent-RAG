@@ -16,6 +16,8 @@ import streamlit as st
 from src.config import PROJECT_ROOT
 from src.graph import PIPELINE, build_graph
 from src.state import RetrievedChunk, TechSpecState, create_initial_state
+from src.ui import account
+from src.utils import database
 from src.utils.analysis_io import AnalysisFileError, analysis_from_json, analysis_to_json
 from src.utils.sources import describe_sources
 
@@ -68,8 +70,11 @@ def document_path(selected: Path | None, uploaded: Any) -> Iterator[Path]:
         yield path
 
 
-def run_analysis(path: Path, question: str) -> None:
-    """Ekzekuton grafin, tregon progresin hap pas hapi dhe ruan rezultatin në sesion."""
+def run_analysis(path: Path, question: str) -> bool:
+    """Ekzekuton grafin, tregon progresin hap pas hapi dhe ruan rezultatin në sesion.
+
+    Kthen True vetëm kur të gjithë agjentët përfunduan pa gabim.
+    """
     completed: list[str] = []  # Vetëm hapat që përfunduan me sukses.
     failed: list[str] = []
     final: TechSpecState | None = None
@@ -94,7 +99,7 @@ def run_analysis(path: Path, question: str) -> None:
             status.update(label="Analiza u ndërpre nga një gabim i sistemit.", state="error")
             st.session_state.analysis = None
             st.error(f"Gabim i sistemit: {exc}")
-            return
+            return False
 
         if final["errors"]:
             status.update(label="Analiza u ndal te një agjent.", state="error", expanded=False)
@@ -102,13 +107,31 @@ def run_analysis(path: Path, question: str) -> None:
             status.update(label="Analiza përfundoi.", state="complete", expanded=False)
 
     st.session_state.analysis = {"state": final, "completed": completed, "failed": failed, "document": path.name}
+    return not final["errors"]
 
 
-def render_sidebar() -> None:
+def start_analysis(path: Path, question: str) -> None:
+    """Kontrollon kuotën, ekzekuton analizën dhe e ruan në historik vetëm kur ka sukses."""
+    allowed, used, limit = database.can_user_analyze(st.session_state.user_id)
+    if not allowed:
+        st.warning(f"Ke arritur limitin e analizave ({used} / {limit}). Kontakto administratorin për ta rritur.")
+        return
+    if run_analysis(path, question):
+        database.save_analysis_history(
+            st.session_state.user_id, path.name, question, analysis_to_json(st.session_state.analysis)
+        )
+        # Rifreskon kuotën dhe historikun në panelin anësor.
+        st.rerun()
+
+
+def render_sidebar_title() -> None:
     with st.sidebar:
         st.title("TechSpec RAG")
         st.caption("Analiza e dokumentacionit teknik me 6 agjentë")
 
+
+def render_sidebar() -> None:
+    with st.sidebar:
         st.subheader("Dokumenti")
         source = st.radio(
             "Burimi", [SOURCE_EXISTING, SOURCE_UPLOAD], horizontal=True, label_visibility="collapsed", key="source"
@@ -139,7 +162,7 @@ def render_sidebar() -> None:
                 st.error("Shkruaj një pyetje për analizën.")
             else:
                 with document_path(selected_path, uploaded_file) as path:
-                    run_analysis(path, question.strip())
+                    start_analysis(path, question.strip())
         st.caption("Analiza zgjat rreth 1 deri në 2 minuta, sepse 4 agjentë thërrasin modelin gjuhësor (Claude).")
 
         st.divider()
@@ -156,6 +179,7 @@ def render_sidebar() -> None:
                 st.session_state.analysis = analysis_from_json(saved_file.getvalue())
             except AnalysisFileError as exc:
                 st.error(str(exc))
+        st.divider()
 
 
 def render_errors(state: TechSpecState, document: str) -> None:
@@ -374,8 +398,21 @@ def render_main() -> None:
 
 def main() -> None:
     st.set_page_config(page_title="TechSpec RAG", page_icon=":material/description:", layout="wide")
+    database.init_db()
     st.session_state.setdefault("analysis", None)
+    if not account.is_logged_in():
+        account.render_auth_page()
+        return
+
+    render_sidebar_title()
+    account.render_account_sidebar()
+    account.render_history_error()
+    if account.is_admin() and st.session_state.get("page") == account.PAGE_ADMIN:
+        account.render_history_sidebar()
+        account.render_admin_page()
+        return
     render_sidebar()
+    account.render_history_sidebar()
     render_main()
 
 

@@ -41,7 +41,7 @@ flowchart LR
 - **Pa vlera të shpikura.** Kur dokumentit i mungon një vlerë, modeli shkruan `[TBD: ...]` në vend që ta shpikë.
 - **Numra të përsëritshëm.** Përqindja e cilësisë llogaritet nga kodi sipas kritereve që nuk plotësohen (çdo kriter vlen 20%), jo nga modeli.
 - **Raport pa modelin gjuhësor.** Dokumentacioni Markdown ndërtohet nga kodi me të dhënat e gjendjes, ndaj nuk mund të përmbajë tekst të shpikur.
-- **Modeli rezervë.** Kur filtrat e sigurisë të Anthropic refuzojnë një kërkesë, ajo ridrejtohet automatikisht te një model tjetër (`fallbacks: "default"`).
+- **Kosto e ulët.** Modeli i paracaktuar është `claude-haiku-5-5` ($0.10 / $0.50 për milion tokena), 20 herë më i lirë se `claude-sonnet-5-5`. 80% e kostos së një analize vjen nga tokenat dalës, ndaj udhëzimet u kërkojnë agjentëve shpjegime të shkurtra. Me Sonnet ose Opus aktivizohet edhe modeli rezervë i Anthropic (`fallbacks: "default"`) për kërkesat që refuzohen nga filtrat e sigurisë.
 - **Gabime të qarta.** Çdo gabim i API-së (çelës i pavlefshëm, kufi kërkesash, model i tërhequr, mungesë interneti) shfaqet si mesazh në shqip, pa e rrëzuar aplikacionin.
 
 ## Teknologjitë
@@ -96,7 +96,7 @@ Skedari `.env` është i përjashtuar nga git dhe nuk duhet ndarë me askënd.
 
 | Variabla | Vlera e paracaktuar | Përdorimi |
 |---|---|---|
-| `TECHSPEC_CLAUDE_MODEL` | `claude-sonnet-5-5` | Modeli Claude. Anthropic i tërheq modelet e vjetra herë pas here; atëherë ndrysho këtë vlerë. |
+| `TECHSPEC_CLAUDE_MODEL` | `claude-haiku-5-5` | Modeli Claude. `claude-sonnet-5-5` jep cilësi më të lartë për rreth 20 herë më shumë kosto. Anthropic i tërheq modelet e vjetra herë pas here; atëherë ndrysho këtë vlerë. |
 | `TECHSPEC_MAX_TOKENS` | `16000` | Gjatësia maksimale e një përgjigjeje. |
 | `TECHSPEC_TIMEOUT_SECONDS` | `300` | Koha maksimale e pritjes për një thirrje. |
 | `TECHSPEC_MAX_RETRIES` | `2` | Sa herë riprovohet një thirrje që dështoi. |
@@ -132,7 +132,7 @@ Testet nuk kanë nevojë për çelës API dhe nuk dalin në internet. Ato përdo
 ## Kufizimet
 
 - **Rezultatet ndryshojnë.** Modeli gjuhësor mund të nxjerrë numër të ndryshëm kërkesash nga një ekzekutim te tjetri.
-- **Kosto.** Çdo analizë bën 4 thirrje te Claude dhe kushton zakonisht disa centë. API-ja mund të kthejë edhe gabime të përkohshme (529) ose kufi kërkesash (429).
+- **Kosto.** Çdo analizë bën 4 thirrje te Claude. Me `claude-sonnet-5-5` një analizë e ShopFlow kushtoi $0.195; me `claude-haiku-5-5` çmimi për token është 20 herë më i ulët. API-ja mund të kthejë edhe gabime të përkohshme (529) ose kufi kërkesash (429).
 - **Gjuha.** Modeli i embedding-ut është trajnuar kryesisht për anglishten, ndaj kërkimi me pyetje në shqip është më i dobët.
 - **PDF të skanuara.** Nuk mbështeten, sepse sistemi nuk bën OCR.
 - **Seksionet.** Gjenden vetëm kur titujt kanë shkronja më të mëdha se teksti; titujt që dallohen vetëm me shkronja të trasha (bold) nuk njihen.
