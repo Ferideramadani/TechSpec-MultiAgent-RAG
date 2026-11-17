@@ -1,7 +1,7 @@
 import json
-import sqlite3
 
 import pytest
+from sqlalchemy import inspect, text
 
 from src.utils import database as db
 from src.utils.database import UserError
@@ -10,17 +10,17 @@ RESULT = json.dumps({"state": {"requirements": []}})
 
 
 @pytest.fixture(autouse=True)
-def fresh_db(tmp_path, monkeypatch):
-    """Çdo test merr databazën e vet; përsëritjet e hash-it ulen që testet të jenë të shpejta."""
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "techspec.db")
+def fresh_db(monkeypatch):
+    """Çdo test merr një databazë SQLite të re në memorie; përsëritjet e hash-it ulen që testet të jenë të shpejta."""
+    db.configure("sqlite://")
     monkeypatch.setattr(db, "_PBKDF2_ITERATIONS", 1_000)
-    return tmp_path / "techspec.db"
+    return db.get_engine()
 
 
-def test_database_file_and_default_admin_are_created(fresh_db):
+def test_tables_and_default_admin_are_created(fresh_db):
     db.init_db()
 
-    assert fresh_db.is_file()
+    assert {"users", "history"} <= set(inspect(fresh_db).get_table_names())
     [admin] = db.get_all_users()
     assert admin == {"id": 1, "username": "admin", "role": "admin", "analysis_limit": -1, "analyses_used": 0}
     assert db.login_user("admin", "admin123")["role"] == "admin"
@@ -90,8 +90,8 @@ def test_passwords_are_salted_and_never_stored_in_plain_text(fresh_db):
     db.register_user("arta", "correct-horse")
     db.register_user("besa", "correct-horse")
 
-    with sqlite3.connect(fresh_db) as connection:
-        hashes = [row[0] for row in connection.execute("SELECT password_hash FROM users WHERE role = 'user'")]
+    with fresh_db.connect() as connection:
+        hashes = [row[0] for row in connection.execute(text("SELECT password_hash FROM users WHERE role = 'user'"))]
 
     assert len(set(hashes)) == 2
     assert all(h.startswith("pbkdf2_sha256$") and "correct-horse" not in h for h in hashes)
@@ -202,3 +202,47 @@ def test_all_history_includes_usernames():
     db.save_analysis_history(besa, "b.pdf", "q", RESULT)
 
     assert [item["username"] for item in db.get_all_history()] == ["besa", "arta"]
+
+
+def test_a_file_database_is_created_when_missing(tmp_path):
+    path = tmp_path / "techspec.db"
+    db.configure(f"sqlite:///{path.as_posix()}")
+
+    db.init_db()
+
+    assert path.is_file()
+    assert db.login_user("admin", "admin123")["role"] == "admin"
+    db.get_engine().dispose()
+
+
+def test_deleting_a_user_deletes_their_history(fresh_db):
+    user_id = db.register_user("arta", "correct-horse")
+    db.save_analysis_history(user_id, "spec.pdf", "question", RESULT)
+
+    with fresh_db.begin() as connection:
+        connection.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+
+    assert db.get_user_history(user_id) == []
+
+
+def test_albanian_text_survives_the_round_trip():
+    user_id = db.register_user("arta", "correct-horse")
+    db.save_analysis_history(user_id, "specifikimi_ë.pdf", "Çfarë kërkesash ka sistemi?", RESULT)
+
+    [item] = db.get_user_history(user_id)
+
+    assert (item["pdf_name"], item["question"]) == ("specifikimi_ë.pdf", "Çfarë kërkesash ka sistemi?")
+
+
+@pytest.mark.parametrize("name", ["TechSpec DB", "x];DROP DATABASE master;--", "a-b"])
+def test_unsafe_sql_server_database_names_are_rejected(name):
+    url = f"mssql+pyodbc://@localhost/{name}?driver=ODBC+Driver+18+for+SQL+Server&trusted_connection=yes"
+
+    with pytest.raises(db.DatabaseUnavailable, match="lejon vetëm"):
+        db._ensure_database_exists(url)
+
+
+def test_sqlite_urls_skip_database_creation(monkeypatch):
+    monkeypatch.setattr(db, "create_engine", lambda *args, **kwargs: pytest.fail("nuk duhet lidhur me serverin"))
+
+    db._ensure_database_exists("sqlite://")

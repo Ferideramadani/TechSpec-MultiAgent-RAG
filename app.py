@@ -398,7 +398,11 @@ def render_main() -> None:
 
 def main() -> None:
     st.set_page_config(page_title="TechSpec RAG", page_icon=":material/description:", layout="wide")
-    database.init_db()
+    try:
+        database.init_db()
+    except database.DatabaseUnavailable as exc:
+        st.error(str(exc))
+        st.stop()
     st.session_state.setdefault("analysis", None)
     if not account.is_logged_in():
         account.render_auth_page()

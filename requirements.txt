@@ -4,3 +4,5 @@ langgraph
 chromadb
 streamlit
 pypdf
+sqlalchemy>=2.0
+pyodbc>=5.0

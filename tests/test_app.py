@@ -66,9 +66,9 @@ def respond_like_llm(llm_api, failing_schema=None):
 
 
 @pytest.fixture
-def accounts(tmp_path, monkeypatch):
-    """Databazë e përkohshme me admin-in e paracaktuar dhe një përdorues të zakonshëm."""
-    monkeypatch.setattr(db, "DB_PATH", tmp_path / "techspec.db")
+def accounts(monkeypatch):
+    """Databazë SQLite në memorie me admin-in e paracaktuar dhe një përdorues të zakonshëm."""
+    db.configure("sqlite://")
     monkeypatch.setattr(db, "_PBKDF2_ITERATIONS", 1_000)
     db.register_user("arta", "correct-horse")
     return {"user": db.login_user("arta", "correct-horse"), "admin": db.login_user("admin", "admin123")}
@@ -362,6 +362,18 @@ def test_history_item_opens_without_calling_the_model(app, services, llm_api):
     assert len(llm_api.requests) == requests_before
     assert app.session_state.analysis["state"]["query"] == QUESTION
     assert "Kjo është një analizë e ruajtur" in texts(app)
+
+
+def test_unreachable_database_shows_a_message(monkeypatch):
+    def unavailable():
+        raise db.DatabaseUnavailable("Nuk u arrit lidhja me databazën.")
+
+    monkeypatch.setattr(db, "init_db", unavailable)
+
+    app = make_app()
+
+    assert errors(app) == ["Nuk u arrit lidhja me databazën."]
+    assert not app.text_input
 
 
 def test_regular_users_have_no_admin_page(app):

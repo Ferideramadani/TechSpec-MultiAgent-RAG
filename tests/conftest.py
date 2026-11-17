@@ -1,3 +1,9 @@
+import os
+
+# Testet nuk lidhen kurrë me SQL Server-in lokal: vendoset para se `src.config` të lexojë `.env`,
+# dhe load_dotenv nuk i mbishkruan variablat që ekzistojnë.
+os.environ["DATABASE_URL"] = "sqlite://"
+
 from dataclasses import replace
 
 import pytest

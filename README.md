@@ -52,6 +52,7 @@ flowchart LR
 | Orkestrimi i agjentëve | LangGraph |
 | Modeli gjuhësor | Claude (Anthropic API) përmes `langchain-anthropic`, me dalje të strukturuara (`json_schema`) |
 | Baza vektoriale | ChromaDB, me modelin lokal të embedding-ut `all-MiniLM-L6-v2` |
+| Databaza e përdoruesve | Microsoft SQL Server përmes SQLAlchemy dhe pyodbc (SQLite si alternativë dhe për testet) |
 | Leximi i PDF-ve | pypdf |
 | Ndërfaqja | Streamlit |
 | Testet | pytest |
@@ -72,6 +73,8 @@ src/
     sources.py            Formatimi i pjesëve dhe i burimeve (faqja, seksioni)
     llm.py                Thirrja e përbashkët te modeli dhe trajtimi i gabimeve
     analysis_io.py        Ruajtja dhe hapja e një analize si JSON
+    database.py           Përdoruesit, kuotat dhe historiku (SQL Server ose SQLite)
+    migrate_sqlite.py     Kalimi i të dhënave nga techspec.db te SQL Server
 tests/                    Testet automatike (pa internet dhe pa kosto)
 data/                     Dokumentet PDF shembull
 ```
@@ -92,10 +95,47 @@ ANTHROPIC_API_KEY=çelësi_yt
 
 Skedari `.env` është i përjashtuar nga git dhe nuk duhet ndarë me askënd.
 
+### Databaza (Microsoft SQL Server)
+
+Përdoruesit, kuotat dhe historiku i analizave ruhen në Microsoft SQL Server. Nevojiten:
+
+- SQL Server 2017 ose më i ri (testuar me SQL Server 2022 Developer, instanca e paracaktuar `MSSQLSERVER`), që punon te `localhost`.
+- [ODBC Driver 18 for SQL Server](https://learn.microsoft.com/sql/connect/odbc/download-odbc-driver-for-sql-server). Me `python -c "import pyodbc; print(pyodbc.drivers())"` shihet cili driver është i instaluar.
+- Llogaria e Windows-it që nis aplikacionin duhet të ketë leje të krijojë databaza (`dbcreator`) herën e parë. Pas kësaj mjafton leja e leximit dhe e shkrimit te `TechSpecDB`.
+
+Shto te `.env` lidhjen me Windows Authentication:
+
+```
+DATABASE_URL=mssql+pyodbc://@localhost/TechSpecDB?driver=ODBC+Driver+18+for+SQL+Server&trusted_connection=yes&TrustServerCertificate=yes
+```
+
+Kur aplikacioni hapet herën e parë, krijon vetë databazën `TechSpecDB`, tabelat `users` dhe `history`, si dhe llogarinë `admin`. Fjalëkalimi i paracaktuar është `admin123`, ose ai i `TECHSPEC_ADMIN_PASSWORD`. Ndryshoje para se aplikacioni të hapet në rrjet. Nëse serveri nuk arrihet, ndërfaqja shfaq një mesazh gabimi dhe nuk hapet.
+
+Variante të tjera të `DATABASE_URL`:
+
+| Rasti | Vlera |
+|---|---|
+| Instancë me emër, p.sh. `SQLEXPRESS` | `mssql+pyodbc://@localhost\SQLEXPRESS/TechSpecDB?driver=ODBC+Driver+18+for+SQL+Server&trusted_connection=yes&TrustServerCertificate=yes` |
+| Hyrje me përdorues SQL | `mssql+pyodbc://përdoruesi:fjalëkalimi@localhost/TechSpecDB?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes` |
+| ODBC Driver 17 | `driver=ODBC+Driver+17+for+SQL+Server` (pa `TrustServerCertificate`) |
+| SQLite, pa server | `sqlite:///techspec.db`, ose hiqe fare `DATABASE_URL` |
+
+`TrustServerCertificate=yes` nevojitet sepse Driver 18 e kodon lidhjen si parazgjedhje, ndërsa një SQL Server lokal përdor certifikatë të vetë-nënshkruar. Për një server në rrjet përdor certifikatë të vërtetë dhe hiqe këtë parametër.
+
+Nëse ke të dhëna te skedari i vjetër `techspec.db`, kaloji në SQL Server me:
+
+```bash
+python -m src.utils.migrate_sqlite
+```
+
+Skripti kopjon përdoruesit, me hash-et e fjalëkalimeve, dhe historikun. Përdoruesit që ekzistojnë tashmë, si `admin`, nuk mbishkruhen, dhe nisja e dytë nuk dyfishon asgjë.
+
 ### Variabla opsionale
 
 | Variabla | Vlera e paracaktuar | Përdorimi |
 |---|---|---|
+| `DATABASE_URL` | `sqlite:///techspec.db` | Lidhja me databazën e përdoruesve (shih më lart). |
+| `TECHSPEC_ADMIN_PASSWORD` | `admin123` | Fjalëkalimi i llogarisë `admin`, kur krijohet herën e parë. |
 | `TECHSPEC_CLAUDE_MODEL` | `claude-haiku-5-5` | Modeli Claude. `claude-sonnet-5-5` jep cilësi më të lartë për rreth 20 herë më shumë kosto. Anthropic i tërheq modelet e vjetra herë pas here; atëherë ndrysho këtë vlerë. |
 | `TECHSPEC_MAX_TOKENS` | `16000` | Gjatësia maksimale e një përgjigjeje. |
 | `TECHSPEC_TIMEOUT_SECONDS` | `300` | Koha maksimale e pritjes për një thirrje. |
@@ -127,7 +167,7 @@ python -m pip install pytest
 python -m pytest tests -q
 ```
 
-Testet nuk kanë nevojë për çelës API dhe nuk dalin në internet. Ato përdorin modelin real të LangChain kundrejt një serveri lokal që imiton API-në e Anthropic, dhe një bazë vektoriale të përkohshme. Mbulojnë agjentët një nga një, grafin e plotë (përfshirë ndalimin pas çdo gabimi) dhe ndërfaqen Streamlit.
+Testet nuk kanë nevojë për çelës API, për SQL Server apo për internet. Ato përdorin modelin real të LangChain kundrejt një serveri lokal që imiton API-në e Anthropic, një bazë vektoriale të përkohshme dhe një databazë SQLite në memorie për çdo test, pavarësisht vlerës së `DATABASE_URL` te `.env`. Mbulojnë agjentët një nga një, grafin e plotë (përfshirë ndalimin pas çdo gabimi) dhe ndërfaqen Streamlit.
 
 ## Kufizimet
 
